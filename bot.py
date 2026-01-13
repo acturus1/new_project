@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import random
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -13,7 +14,11 @@ load_dotenv()
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler('bot.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -128,55 +133,90 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Обработка данных из Mini App"""
     try:
         if not update.effective_message or not update.effective_message.web_app_data:
+            logger.warning("Нет данных WebApp")
             return
             
         data_json = update.effective_message.web_app_data.data
-        data = json.loads(data_json)
+        logger.info(f"Получены сырые данные WebApp: {data_json}")
+        
+        try:
+            data = json.loads(data_json)
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка декодирования JSON: {e}")
+            await update.effective_message.reply_text(
+                "❌ Ошибка формата данных. Пожалуйста, перезагрузите приложение."
+            )
+            return
+            
         user_id = update.effective_user.id
-        request_id = data.get("request_id", "")
-        event_type = data.get("event")
-
-        logger.info(f"Данные от Mini App: {event_type}, user_id: {user_id}")
+        request_id = data.get("request_id", "unknown")
+        event_type = data.get("event", "unknown")
+        
+        logger.info(f"WebApp event: {event_type}, user_id: {user_id}, request_id: {request_id}")
+        logger.info(f"Полные данные: {json.dumps(data, ensure_ascii=False)}")
 
         user_data = db.get_user(user_id)
 
+        # Подготовка базового ответа
         response_data = {
             "request_id": request_id,
             "success": True,
-            "user_id": user_id
+            "user_id": user_id,
+            "event": event_type
         }
 
-        if event_type == "get_balance":
-            # Отправляем текущий баланс
+        if event_type == "get_initial_data":
+            # Отправляем начальные данные при открытии Mini App
             response_data.update({
                 "balance": user_data["balance"],
                 "games_played": user_data["games_played"],
                 "biggest_win": user_data["biggest_win"],
                 "total_wins": user_data["total_wins"],
+                "total_losses": user_data.get("total_losses", 0),
                 "min_bet": 10,
-                "max_bet": 500
+                "max_bet": 500,
+                "daily_bonus_available": not user_data.get("daily_bonus_claimed", False),
+                "name": user_data.get("name", update.effective_user.first_name)
             })
             
-            # Отправляем ответ в чат (будет обработан в Mini App)
+            logger.info(f"Отправляем начальные данные: баланс {user_data['balance']}₽")
+            
+            # Отправляем ответ как обычное сообщение (Telegram сам его обработает)
+            response_text = json.dumps(response_data)
             await update.effective_message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                f"🎰 *Данные загружены!*\n"
+                f"💰 Баланс: {user_data['balance']}₽\n"
+                f"🎮 Игр сыграно: {user_data['games_played']}\n"
+                f"🏆 Рекорд: {user_data['biggest_win']}₽",
+                parse_mode='Markdown'
+            )
+            
+            # Также отправляем JSON ответ для WebApp
+            await update.effective_message.reply_text(
+                f"WEBAPP_DATA:{response_text}",
                 parse_mode=None
             )
 
         elif event_type == "check_balance":
-            # Проверяем достаточно ли средств
+            # Проверяем достаточно ли средств для ставки
             bet = data.get("bet", 0)
             has_enough = user_data["balance"] >= bet
             
             response_data.update({
-                "success": has_enough,
-                "balance": user_data["balance"],
                 "can_play": has_enough,
-                "message": "Недостаточно средств" if not has_enough else "OK"
+                "current_balance": user_data["balance"],
+                "required_bet": bet,
+                "message": "Недостаточно средств" if not has_enough else "Средств достаточно"
             })
             
+            if not has_enough:
+                response_data["success"] = False
+            
+            logger.info(f"Проверка баланса: {bet}₽, достаточно: {has_enough}, баланс: {user_data['balance']}₽")
+            
+            response_text = json.dumps(response_data)
             await update.effective_message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                f"WEBAPP_DATA:{response_text}",
                 parse_mode=None
             )
 
@@ -186,21 +226,37 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             win_amount = data.get("win_amount", 0)
             symbols = data.get("symbols", [])
             
-            # Проверяем валидность ставки
+            logger.info(f"Результат игры: ставка {bet}₽, выигрыш {win_amount}₽")
+            
+            # Валидация ставки
             if bet < 10 or bet > 500:
                 response_data.update({
                     "success": False,
-                    "message": "Некорректная ставка"
+                    "message": f"Некорректная ставка: {bet}₽. Допустимо: 10-500₽"
                 })
+                response_text = json.dumps(response_data)
                 await update.effective_message.reply_text(
-                    f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                    f"WEBAPP_DATA:{response_text}",
+                    parse_mode=None
+                )
+                return
+            
+            if bet > user_data["balance"]:
+                response_data.update({
+                    "success": False,
+                    "message": f"Недостаточно средств. Ставка: {bet}₽, баланс: {user_data['balance']}₽"
+                })
+                response_text = json.dumps(response_data)
+                await update.effective_message.reply_text(
+                    f"WEBAPP_DATA:{response_text}",
                     parse_mode=None
                 )
                 return
 
-            # Обновляем баланс и статистику
+            # Вычисляем новый баланс
             new_balance = user_data["balance"] - bet + win_amount
             
+            # Подготавливаем данные для обновления
             update_data = {
                 "balance": new_balance,
                 "games_played": user_data["games_played"] + 1
@@ -209,83 +265,154 @@ async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if win_amount > 0:
                 update_data["total_wins"] = user_data["total_wins"] + 1
                 update_data["biggest_win"] = max(user_data["biggest_win"], win_amount)
+                win_type = "win"
             else:
                 update_data["total_losses"] = user_data.get("total_losses", 0) + 1
+                win_type = "loss"
 
             # Сохраняем изменения
             db.update_user(user_id, update_data)
             
-            # Готовим ответ
+            # Готовим ответ для WebApp
             response_data.update({
                 "new_balance": new_balance,
+                "old_balance": user_data["balance"],
                 "games_played": update_data["games_played"],
                 "win_amount": win_amount,
                 "bet": bet,
-                "is_win": win_amount > 0
+                "is_win": win_amount > 0,
+                "win_type": win_type,
+                "symbols_count": len(symbols) if symbols else 0
             })
             
-            # Отправляем уведомление пользователю
+            # Отправляем уведомление пользователю в чат
             if win_amount > 0:
+                win_message = (
+                    f"🎉 *ПОЗДРАВЛЯЕМ!*\n\n"
+                    f"💰 *Выигрыш:* {win_amount}₽\n"
+                    f"🎰 *Ставка:* {bet}₽\n"
+                    f"💎 *Новый баланс:* {new_balance}₽\n"
+                    f"📊 *Всего игр:* {update_data['games_played']}\n\n"
+                )
+                
+                if win_amount >= bet * 100:
+                    win_message += "🏆 *МЕГА ДЖЕКПОТ!* 🏆\n"
+                elif win_amount >= bet * 50:
+                    win_message += "🌟 *СУПЕР ВЫИГРЫШ!* 🌟\n"
+                elif win_amount >= bet * 20:
+                    win_message += "✨ *БОЛЬШОЙ ВЫИГРЫШ!* ✨\n"
+                    
                 await update.effective_message.reply_text(
-                    f"🎉 *Вы выиграли {win_amount}₽!*\n"
-                    f"💰 Новый баланс: {new_balance}₽\n"
-                    f"📊 Всего игр: {update_data['games_played']}",
+                    win_message,
                     parse_mode='Markdown'
                 )
             else:
                 await update.effective_message.reply_text(
-                    f"😔 *Вы проиграли {bet}₽*\n"
-                    f"💰 Новый баланс: {new_balance}₽",
+                    f"😔 *Игра завершена*\n\n"
+                    f"🎰 *Ставка:* {bet}₽\n"
+                    f"💰 *Новый баланс:* {new_balance}₽\n"
+                    f"📊 *Всего игр:* {update_data['games_played']}\n\n"
+                    f"🎮 *Попробуйте еще раз! Удачи!*",
                     parse_mode='Markdown'
                 )
             
-            # И отдельно отправляем JSON ответ для Mini App
+            # Отправляем JSON ответ для WebApp
+            response_text = json.dumps(response_data)
             await update.effective_message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                f"WEBAPP_DATA:{response_text}",
                 parse_mode=None
             )
+            
+            logger.info(f"Игра обработана: новый баланс {new_balance}₽, выигрыш {win_amount}₽")
 
-        elif event_type == "get_initial_data":
-            # Отправляем все начальные данные
+        elif event_type == "get_balance":
+            # Просто запрос текущего баланса
             response_data.update({
                 "balance": user_data["balance"],
                 "games_played": user_data["games_played"],
                 "biggest_win": user_data["biggest_win"],
-                "total_wins": user_data["total_wins"],
-                "total_losses": user_data.get("total_losses", 0),
-                "min_bet": 10,
-                "max_bet": 500,
-                "daily_bonus_available": not user_data.get("daily_bonus_claimed", False)
+                "total_wins": user_data["total_wins"]
             })
             
+            response_text = json.dumps(response_data)
             await update.effective_message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                f"WEBAPP_DATA:{response_text}",
+                parse_mode=None
+            )
+            
+            logger.info(f"Запрос баланса: {user_data['balance']}₽")
+
+        elif event_type == "get_user_info":
+            # Запрос информации о пользователе
+            response_data.update({
+                "name": user_data.get("name", update.effective_user.first_name),
+                "username": update.effective_user.username,
+                "balance": user_data["balance"],
+                "created_at": user_data.get("created_at", ""),
+                "games_played": user_data["games_played"],
+                "win_rate": (user_data["total_wins"] / user_data["games_played"] * 100) if user_data["games_played"] > 0 else 0
+            })
+            
+            response_text = json.dumps(response_data)
+            await update.effective_message.reply_text(
+                f"WEBAPP_DATA:{response_text}",
                 parse_mode=None
             )
 
         else:
+            # Неизвестное событие
             response_data.update({
                 "success": False,
-                "message": "Неизвестное событие"
+                "message": f"Неизвестное событие: {event_type}"
             })
+            
+            logger.warning(f"Неизвестное событие WebApp: {event_type}")
+            
+            response_text = json.dumps(response_data)
             await update.effective_message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps(response_data)}",
+                f"WEBAPP_DATA:{response_text}",
                 parse_mode=None
             )
 
-    except json.JSONDecodeError:
-        logger.error("Ошибка декодирования JSON")
-        await update.message.reply_text("❌ Ошибка формата данных")
-    except Exception as e:
-        logger.error(f"Ошибка обработки WebApp данных: {e}", exc_info=True)
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка декодирования JSON в handle_webapp_data: {e}")
         try:
-            await update.message.reply_text(
-                f"WEBAPP_RESPONSE:{json.dumps({'success': False, 'message': 'Server error'})}",
+            await update.effective_message.reply_text(
+                "WEBAPP_DATA:" + json.dumps({
+                    "success": False,
+                    "message": "Ошибка формата JSON данных"
+                }),
                 parse_mode=None
             )
         except:
             pass
-
+            
+    except KeyError as e:
+        logger.error(f"Отсутствует ключ в данных: {e}")
+        try:
+            await update.effective_message.reply_text(
+                "WEBAPP_DATA:" + json.dumps({
+                    "success": False,
+                    "message": f"Отсутствует обязательное поле: {e}"
+                }),
+                parse_mode=None
+            )
+        except:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Критическая ошибка в handle_webapp_data: {e}", exc_info=True)
+        try:
+            await update.effective_message.reply_text(
+                "WEBAPP_DATA:" + json.dumps({
+                    "success": False,
+                    "message": f"Внутренняя ошибка сервера: {str(e)}"
+                }),
+                parse_mode=None
+            )
+        except:
+            # Если даже это не сработает, просто логируем
+            logger.error("Не удалось отправить сообщение об ошибке")
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка inline-кнопок"""
     query = update.callback_query
@@ -445,6 +572,35 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def handle_webapp_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка текстовых сообщений, которые могут содержать данные WebApp"""
+    try:
+        text = update.message.text
+        logger.info(f"Получено текстовое сообщение: {text[:100]}...")
+        
+        # Проверяем, не является ли это JSON данными от WebApp
+        if text.strip().startswith('{') and text.strip().endswith('}'):
+            try:
+                data = json.loads(text)
+                if 'event' in data or 'request_id' in data:
+                    logger.info("Обнаружены JSON данные в текстовом сообщении")
+                    # Создаем fake web_app_data объект
+                    class FakeWebAppData:
+                        def __init__(self, data_str):
+                            self.data = data_str
+                    
+                    update.effective_message.web_app_data = FakeWebAppData(text)
+                    await handle_webapp_data(update, context)
+                    return
+            except json.JSONDecodeError:
+                pass
+                
+        # Если это не WebApp данные, игнорируем
+        logger.info("Текстовое сообщение не содержит WebApp данных, игнорируем")
+        
+    except Exception as e:
+        logger.error(f"Ошибка в handle_webapp_text: {e}")
+
 def main():
     """Запуск бота"""
     print("🎰 Запуск бота-казино с Mini App...")
@@ -460,9 +616,14 @@ def main():
     application.add_handler(CommandHandler("bonus", bonus_command))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Обработчики кнопок и WebApp
+    # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # ВАЖНО: WebApp данные обрабатываем отдельно
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
+    
+    # Также обрабатываем текстовые сообщения (на случай если WebApp отправит как текст)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_webapp_text))
 
     # Запускаем
     print("✅ Бот запущен!")

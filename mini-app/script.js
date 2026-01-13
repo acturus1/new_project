@@ -14,10 +14,14 @@ const CONFIG = {
     gridSize: 5
 };
 
+// Глобальные переменные
+let game;
+let isTelegramWebApp = false;
+
 // Состояние игры
 class GameState {
     constructor() {
-        this.balance = 0; // Будет загружено с сервера
+        this.balance = 1000; // Стартовый баланс по умолчанию
         this.currentBet = 50;
         this.isSpinning = false;
         this.gamesPlayed = 0;
@@ -25,7 +29,6 @@ class GameState {
         this.biggestWin = 0;
         this.userId = this.getUserId();
         this.isMobile = this.checkMobile();
-        this.telegramWebApp = null;
         this.init();
     }
 
@@ -33,7 +36,7 @@ class GameState {
         this.createGrid();
         this.setupEventListeners();
         this.setupTelegram();
-        await this.loadInitialData(); // Загружаем данные с сервера
+        await this.loadInitialData();
         this.setupMobileFeatures();
         this.updateDisplay();
     }
@@ -45,53 +48,99 @@ class GameState {
 
     getUserId() {
         const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('user_id') || 'guest';
+        return urlParams.get('user_id') || 'demo_user_' + Math.random().toString(36).substr(2, 9);
     }
 
     setupTelegram() {
+        console.log('Проверяем наличие Telegram WebApp...');
+        
         if (window.Telegram && window.Telegram.WebApp) {
-            this.telegramWebApp = window.Telegram.WebApp;
-            this.telegramWebApp.expand();
-            this.telegramWebApp.ready();
-            this.telegramWebApp.setHeaderColor('#302b63');
-            this.telegramWebApp.setBackgroundColor('#0f0c29');
+            console.log('Telegram WebApp обнаружен!');
+            isTelegramWebApp = true;
             
-            // Настраиваем обработчик входящих сообщений
-            this.setupMessageHandler();
+            const tg = window.Telegram.WebApp;
+            
+            // Инициализация WebApp
+            tg.ready();
+            tg.expand();
+            tg.enableClosingConfirmation();
+            
+            // Настройка темы
+            const theme = tg.themeParams;
+            if (theme.bg_color) {
+                document.documentElement.style.setProperty('--tg-bg-color', theme.bg_color);
+            }
+            
+            // Настройка цветов
+            tg.setHeaderColor('#302b63');
+            tg.setBackgroundColor('#0f0c29');
+            
+            // Показываем основную кнопку
+            tg.MainButton.setText('Вернуться в бот');
+            tg.MainButton.onClick(() => {
+                tg.close();
+            });
+            
+            console.log('Telegram WebApp настроен:', {
+                version: tg.version,
+                platform: tg.platform,
+                themeParams: tg.themeParams
+            });
+            
+        } else {
+            console.warn('Telegram WebApp не найден. Запуск в режиме демо.');
+            isTelegramWebApp = false;
+            
+            // Для демо-режима создаем заглушку
+            window.Telegram = {
+                WebApp: {
+                    ready: () => console.log('Demo mode ready'),
+                    expand: () => console.log('Demo expand'),
+                    sendData: (data) => {
+                        console.log('Demo sendData:', data);
+                        this.handleDemoResponse(data);
+                    },
+                    close: () => console.log('Demo close'),
+                    MainButton: {
+                        setText: (text) => console.log('MainButton text:', text),
+                        onClick: (callback) => console.log('MainButton click handler'),
+                        show: () => console.log('MainButton show'),
+                        hide: () => console.log('MainButton hide')
+                    },
+                    themeParams: {
+                        bg_color: '#212121',
+                        text_color: '#ffffff'
+                    },
+                    version: '6.0',
+                    platform: 'web'
+                }
+            };
         }
-    }
-
-    setupMessageHandler() {
-        // Telegram WebApp сам обрабатывает ответы через sendData
-        // Эта функция нужна для дополнительной обработки
     }
 
     async loadInitialData() {
         try {
-            // Запрашиваем начальные данные у бота
-            const data = await this.sendToTelegram('get_initial_data', {});
-            
-            if (data && data.success) {
-                this.balance = data.balance || 0;
-                this.gamesPlayed = data.games_played || 0;
-                this.biggestWin = data.biggest_win || 0;
-                this.winsCount = data.total_wins || 0;
+            if (isTelegramWebApp) {
+                // В режиме Telegram пытаемся получить данные от бота
+                const data = await this.sendToTelegram('get_initial_data', {});
+                console.log('Данные от бота:', data);
                 
-                console.log('Данные загружены с сервера:', {
-                    balance: this.balance,
-                    games: this.gamesPlayed
-                });
-                
-                // Если баланс 0 и это новый пользователь, показываем приветствие
-                if (this.balance === 0 && this.gamesPlayed === 0) {
-                    this.showMessage('🎰 Добро пожаловать! Начните игру!', 'info');
+                if (data && data.success) {
+                    this.balance = data.balance || 1000;
+                    this.gamesPlayed = data.games_played || 0;
+                    this.biggestWin = data.biggest_win || 0;
+                    this.winsCount = data.total_wins || 0;
+                } else {
+                    // Если не удалось получить данные, используем localStorage
+                    this.loadFromStorage();
                 }
             } else {
-                throw new Error('Не удалось загрузить данные');
+                // Демо-режим: загружаем из localStorage
+                this.loadFromStorage();
+                console.log('Демо-режим: данные загружены из localStorage');
             }
         } catch (error) {
             console.error('Ошибка загрузки данных:', error);
-            // Загружаем из localStorage как fallback
             this.loadFromStorage();
         }
     }
@@ -167,30 +216,6 @@ class GameState {
 
         spinBtn.addEventListener('touchend', () => {
             clearTimeout(longPressTimer);
-        });
-
-        // Свайп для изменения ставки
-        let startX;
-        const betControls = document.querySelector('.bet-controls');
-
-        betControls.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-        });
-
-        betControls.addEventListener('touchmove', (e) => {
-            if (!startX || this.isSpinning) return;
-
-            const currentX = e.touches[0].clientX;
-            const diff = startX - currentX;
-
-            if (Math.abs(diff) > 50) {
-                if (diff > 0) {
-                    this.adjustBet(-10); // Свайп влево
-                } else {
-                    this.adjustBet(10); // Свайп вправо
-                }
-                startX = currentX;
-            }
         });
     }
 
@@ -297,17 +322,9 @@ class GameState {
     async spin() {
         if (this.isSpinning) return;
         
-        // Проверяем баланс с сервера
-        const balanceCheck = await this.sendToTelegram('check_balance', {
-            bet: this.currentBet
-        });
-        
-        if (!balanceCheck || !balanceCheck.success) {
-            this.showMessage(balanceCheck?.message || 'Ошибка проверки баланса', 'error');
-            if (balanceCheck?.balance !== undefined) {
-                this.balance = balanceCheck.balance;
-                this.updateDisplay();
-            }
+        // Проверяем баланс
+        if (this.currentBet > this.balance) {
+            this.showMessage('Не хватает средств!', 'error');
             return;
         }
 
@@ -329,34 +346,12 @@ class GameState {
         // Проверка выигрыша
         const winResult = this.checkWin(result);
 
-        // Отправляем результат на сервер
-        const gameData = {
-            bet: this.currentBet,
-            win_amount: winResult.winAmount,
-            symbols: result.map(s => s.emoji),
-            win_result: {
-                winAmount: winResult.winAmount,
-                winningCells: winResult.winningCells,
-                maxCount: winResult.maxCount
-            }
-        };
-
-        const serverResponse = await this.sendToTelegram('game_result', gameData);
-
-        if (serverResponse && serverResponse.success) {
-            // Обновляем данные с сервера
-            this.balance = serverResponse.new_balance;
-            this.gamesPlayed = serverResponse.games_played;
-            
-            if (winResult.winAmount > 0) {
-                this.winsCount++;
-                this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
-                this.showWin(winResult);
-            } else {
-                this.showMessage('😔 Нет выигрыша', 'lose');
-            }
+        if (isTelegramWebApp) {
+            // В режиме Telegram отправляем данные боту
+            await this.handleTelegramGameResult(winResult, result);
         } else {
-            this.showMessage('Ошибка обработки игры', 'error');
+            // В демо-режиме обрабатываем локально
+            this.handleDemoGameResult(winResult);
         }
 
         // Разблокируем кнопку
@@ -364,20 +359,86 @@ class GameState {
         spinBtn.disabled = false;
         spinBtn.innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
 
-        // Сохраняем настройки
+        // Сохраняем
         this.saveToStorage();
         this.updateDisplay();
+    }
+
+    async handleTelegramGameResult(winResult, result) {
+        try {
+            const gameData = {
+                bet: this.currentBet,
+                win_amount: winResult.winAmount,
+                symbols: result.map(s => s.emoji)
+            };
+
+            // Отправляем данные боту
+            const response = await this.sendToTelegram('game_result', gameData);
+            
+            if (response && response.success) {
+                // Обновляем баланс из ответа
+                this.balance = response.new_balance || (this.balance - this.currentBet + winResult.winAmount);
+                this.gamesPlayed = response.games_played || this.gamesPlayed;
+                
+                if (winResult.winAmount > 0) {
+                    this.winsCount++;
+                    this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+                    this.showWin(winResult);
+                } else {
+                    this.showMessage('😔 Нет выигрыша', 'lose');
+                }
+            } else {
+                // Если ответ от бота не пришел, обрабатываем локально
+                this.handleLocalGameResult(winResult);
+            }
+        } catch (error) {
+            console.error('Ошибка отправки данных боту:', error);
+            this.handleLocalGameResult(winResult);
+        }
+    }
+
+    handleDemoGameResult(winResult) {
+        // Демо-режим: обрабатываем локально
+        const oldBalance = this.balance;
+        this.balance = oldBalance - this.currentBet + winResult.winAmount;
+        
+        if (winResult.winAmount > 0) {
+            this.winsCount++;
+            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+            this.showWin(winResult);
+            
+            // Показываем уведомление в демо-режиме
+            this.showMessage(`🎉 Демо-выигрыш: +${winResult.winAmount}₽`, 'win');
+        } else {
+            this.showMessage('😔 Нет выигрыша', 'lose');
+        }
+        
+        console.log('Демо-игра:', {
+            bet: this.currentBet,
+            win: winResult.winAmount,
+            oldBalance: oldBalance,
+            newBalance: this.balance
+        });
+    }
+
+    handleLocalGameResult(winResult) {
+        // Локальная обработка (если Telegram не ответил)
+        this.balance = this.balance - this.currentBet + winResult.winAmount;
+        
+        if (winResult.winAmount > 0) {
+            this.winsCount++;
+            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+            this.showWin(winResult);
+        } else {
+            this.showMessage('😔 Нет выигрыша', 'lose');
+        }
     }
 
     async quickSpin() {
         if (this.isSpinning) return;
 
-        // Проверяем баланс
-        const balanceCheck = await this.sendToTelegram('check_balance', {
-            bet: this.currentBet
-        });
-        
-        if (!balanceCheck || !balanceCheck.success) {
+        if (this.currentBet > this.balance) {
+            this.showMessage('Не хватает средств!', 'error');
             return;
         }
 
@@ -399,24 +460,10 @@ class GameState {
         this.displayResult(result);
         const winResult = this.checkWin(result);
 
-        // Отправляем на сервер
-        const gameData = {
-            bet: this.currentBet,
-            win_amount: winResult.winAmount,
-            symbols: result.map(s => s.emoji)
-        };
-
-        const serverResponse = await this.sendToTelegram('game_result', gameData);
-
-        if (serverResponse && serverResponse.success) {
-            this.balance = serverResponse.new_balance;
-            this.gamesPlayed = serverResponse.games_played;
-            
-            if (winResult.winAmount > 0) {
-                this.winsCount++;
-                this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
-                this.showWin(winResult);
-            }
+        if (isTelegramWebApp) {
+            await this.handleTelegramGameResult(winResult, result);
+        } else {
+            this.handleDemoGameResult(winResult);
         }
 
         this.isSpinning = false;
@@ -483,7 +530,6 @@ class GameState {
             symbolCount[emoji] = (symbolCount[emoji] || 0) + 1;
         });
 
-        // Ищем максимальное количество одинаковых символов
         let maxCount = 0;
         let winningSymbol = null;
 
@@ -494,17 +540,14 @@ class GameState {
             }
         }
 
-        // Проверяем линии (горизонтальные, вертикальные, диагонали)
         const lines = this.checkLines(result);
         let totalWin = 0;
         let winningCells = [];
 
-        // Выигрыш за одинаковые символы
         if (maxCount >= 3 && winningSymbol) {
             const multiplier = winningSymbol.multipliers[maxCount] || 0;
             totalWin += this.currentBet * multiplier;
 
-            // Находим выигрышные ячейки
             result.forEach((symbol, index) => {
                 if (symbol.emoji === winningSymbol.emoji) {
                     winningCells.push(index);
@@ -512,7 +555,6 @@ class GameState {
             });
         }
 
-        // Добавляем выигрыш за линии
         if (lines.totalWin > 0) {
             totalWin += lines.totalWin;
             winningCells = [...winningCells, ...lines.winningCells];
@@ -520,7 +562,7 @@ class GameState {
 
         return {
             winAmount: totalWin,
-            winningCells: [...new Set(winningCells)], // Убираем дубликаты
+            winningCells: [...new Set(winningCells)],
             maxCount: maxCount,
             symbol: winningSymbol
         };
@@ -566,9 +608,9 @@ class GameState {
         }
 
         // Диагонали
-        const diag1 = []; // Главная диагональ
+        const diag1 = [];
         const diag1Cells = [];
-        const diag2 = []; // Побочная диагональ
+        const diag2 = [];
         const diag2Cells = [];
 
         for (let i = 0; i < size; i++) {
@@ -583,7 +625,7 @@ class GameState {
 
         const diag1Win = this.checkLine(diag1);
         if (diag1Win > 0) {
-            totalWin += diag1Win * 2; // Диагонали ×2
+            totalWin += diag1Win * 2;
             winningCells.push(...diag1Cells);
         }
 
@@ -615,7 +657,6 @@ class GameState {
         const winAmountElement = document.getElementById('winAmount');
         const winInfoElement = document.getElementById('winInfo');
 
-        // Подсвечиваем выигрышные ячейки
         winResult.winningCells.forEach(cellIndex => {
             const cell = document.getElementById(`cell-${cellIndex}`);
             if (cell) {
@@ -623,7 +664,6 @@ class GameState {
             }
         });
 
-        // Сообщение в зависимости от выигрыша
         let message = '';
         if (winResult.winAmount >= this.currentBet * 100) {
             message = '🎉 МЕГА ДЖЕКПОТ!';
@@ -647,10 +687,8 @@ class GameState {
             winInfoElement.textContent = `${winResult.maxCount}× ${winResult.symbol?.emoji || ''}`;
         }
 
-        // Анимация
         winAmountElement.classList.add('win-animation');
 
-        // Вибрация на мобильных
         if (this.isMobile && navigator.vibrate) {
             navigator.vibrate([100, 50, 100]);
         }
@@ -661,7 +699,6 @@ class GameState {
         const winAmountElement = document.getElementById('winAmount');
         const winInfoElement = document.getElementById('winInfo');
 
-        // Сбрасываем подсветку
         document.querySelectorAll('.reel-cell').forEach(cell => {
             cell.classList.remove('win', 'big-win');
         });
@@ -683,8 +720,17 @@ class GameState {
 
     async sendToTelegram(event, data = {}) {
         return new Promise((resolve) => {
-            if (!this.telegramWebApp) {
-                resolve({ success: false, message: 'Telegram WebApp not available' });
+            if (!isTelegramWebApp || !window.Telegram?.WebApp) {
+                console.log('Demo mode: Simulating Telegram response');
+                // В демо-режиме симулируем ответ бота
+                setTimeout(() => {
+                    resolve({
+                        success: true,
+                        new_balance: this.balance,
+                        games_played: this.gamesPlayed,
+                        demo_mode: true
+                    });
+                }, 500);
                 return;
             }
 
@@ -697,34 +743,47 @@ class GameState {
                 ...data
             };
 
-            // Отправляем данные
-            this.telegramWebApp.sendData(JSON.stringify(messageData));
+            console.log('Отправка данных в Telegram:', messageData);
             
-            // Telegram WebApp автоматически обрабатывает ответ через основной чат
-            // Просто разрешаем промис после отправки
-            // Реальный ответ придет через обработчик в bot.py
-            setTimeout(() => {
-                resolve({ success: true, sent: true });
-            }, 100);
+            try {
+                window.Telegram.WebApp.sendData(JSON.stringify(messageData));
+                
+                // Telegram обработает ответ через бота
+                // Здесь мы просто разрешаем промис
+                setTimeout(() => {
+                    resolve({
+                        success: true,
+                        message: 'Data sent to Telegram'
+                    });
+                }, 100);
+                
+            } catch (error) {
+                console.error('Ошибка отправки данных в Telegram:', error);
+                resolve({
+                    success: false,
+                    error: error.message
+                });
+            }
         });
     }
 
+    handleDemoResponse(data) {
+        // Обработка демо-ответов
+        console.log('Demo response received:', data);
+    }
+
     updateDisplay() {
-        // Баланс
         document.getElementById('balance').textContent = `${this.balance} ₽`;
         document.getElementById('currentBet').textContent = `${this.currentBet} ₽`;
 
-        // Статистика
         document.getElementById('gamesCount').textContent = this.gamesPlayed;
         document.getElementById('winsCount').textContent = this.winsCount;
         document.getElementById('biggestWin').textContent = `${this.biggestWin} ₽`;
 
-        // Обновляем кнопку MAX
         document.querySelectorAll('.quick-bet[data-bet="MAX"]').forEach(btn => {
             btn.textContent = `MAX (${Math.min(CONFIG.maxBet, this.balance)}₽)`;
         });
 
-        // Меняем цвет баланса
         const balanceEl = document.getElementById('balance');
         if (this.balance < CONFIG.minBet) {
             balanceEl.style.background = 'linear-gradient(45deg, #FF416C, #FF4B2B)';
@@ -734,7 +793,6 @@ class GameState {
             balanceEl.style.background = 'linear-gradient(45deg, #00b09b, #96c93d)';
         }
 
-        // Обновляем состояние кнопки вращения
         const spinBtn = document.getElementById('spinBtn');
         if (this.balance < CONFIG.minBet) {
             spinBtn.disabled = true;
@@ -746,22 +804,29 @@ class GameState {
     }
 
     saveToStorage() {
-        // Сохраняем только настройки
         const data = {
+            balance: this.balance,
             currentBet: this.currentBet,
+            gamesPlayed: this.gamesPlayed,
+            winsCount: this.winsCount,
+            biggestWin: this.biggestWin,
             lastPlayed: new Date().toISOString()
         };
-        localStorage.setItem(`casino_settings_${this.userId}`, JSON.stringify(data));
+        localStorage.setItem(`casino_data_${this.userId}`, JSON.stringify(data));
     }
 
     loadFromStorage() {
-        const data = localStorage.getItem(`casino_settings_${this.userId}`);
+        const data = localStorage.getItem(`casino_data_${this.userId}`);
         if (data) {
             try {
                 const saved = JSON.parse(data);
-                this.currentBet = saved.currentBet || this.currentBet;
+                this.balance = saved.balance || 1000;
+                this.currentBet = saved.currentBet || 50;
+                this.gamesPlayed = saved.gamesPlayed || 0;
+                this.winsCount = saved.winsCount || 0;
+                this.biggestWin = saved.biggestWin || 0;
             } catch (e) {
-                console.error('Error loading settings:', e);
+                console.error('Error loading from storage:', e);
             }
         }
     }
@@ -772,22 +837,24 @@ class GameState {
 }
 
 // Инициализация при загрузке
-let game;
-
 document.addEventListener('DOMContentLoaded', () => {
-    game = new GameState();
-
-    // Добавляем поддержку PWA
-    if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-        navigator.serviceWorker.register('/sw.js').catch(console.error);
+    console.log('DOM загружен, инициализируем игру...');
+    
+    // Проверяем, запущены ли мы в iframe Telegram
+    if (window.parent !== window) {
+        console.log('Запущено во фрейме (возможно Telegram WebApp)');
     }
+    
+    game = new GameState();
+    
+    // Добавляем информационное сообщение в консоль
+    console.log('Игра инициализирована. Режим:', isTelegramWebApp ? 'Telegram WebApp' : 'Демо-режим');
+    console.log('User ID:', game.userId);
 });
 
 // Обновляем баланс при возвращении на вкладку
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && game && game.telegramWebApp) {
-        setTimeout(() => {
-            game.loadInitialData();
-        }, 1000);
+    if (!document.hidden && game) {
+        game.updateDisplay();
     }
 });

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎰 Lucky Slots Casino</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Заголовок -->
+        <header class="header">
+            <h1><i class="fas fa-coins"></i> LUCKY SLOTS</h1>
+            <div class="jackpot">
+                <i class="fas fa-trophy"></i>
+                <span>ДЖЕКПОТ: <span id="jackpot-amount">{{ jackpot.amount }}</span> ₽</span>
+            </div>
+        </header>
+
+        <!-- Игровое поле -->
+        <div class="game-container">
+            <div class="slot-machine">
+                <div class="reels-container">
+                    <div class="reel" id="reel1">
+                        <div class="symbol">🍒</div>
+                    </div>
+                    <div class="reel" id="reel2">
+                        <div class="symbol">🍋</div>
+                    </div>
+                    <div class="reel" id="reel3">
+                        <div class="symbol">🍊</div>
+                    </div>
+                </div>
+                
+                <div class="lever-container">
+                    <button id="spin-btn" class="lever">
+                        <i class="fas fa-hand-point-right"></i> КРУТИТЬ
+                    </button>
+                </div>
+            </div>
+
+            <!-- Панель управления -->
+            <div class="control-panel">
+                <div class="balance-panel">
+                    <h3><i class="fas fa-wallet"></i> БАЛАНС</h3>
+                    <div class="balance-amount" id="balance">{{ user.balance if user else 1000 }}</div>
+                </div>
+
+                <div class="bet-control">
+                    <h3><i class="fas fa-bet"></i> СТАВКА</h3>
+                    <div class="bet-buttons">
+                        <button class="bet-btn" data-bet="10">10</button>
+                        <button class="bet-btn" data-bet="50">50</button>
+                        <button class="bet-btn" data-bet="100">100</button>
+                        <button class="bet-btn" data-bet="500">500</button>
+                    </div>
+                    <div class="custom-bet">
+                        <input type="number" id="custom-bet" min="{{ settings.min_bet }}" 
+                               max="{{ settings.max_bet }}" value="10">
+                        <button id="set-bet">OK</button>
+                    </div>
+                    <div class="bet-info">
+                        Мин: {{ settings.min_bet }} | Макс: {{ settings.max_bet }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- История и информация -->
+            <div class="info-panel">
+                <div class="win-history">
+                    <h3><i class="fas fa-history"></i> ПОСЛЕДНИЕ ВЫИГРЫШИ</h3>
+                    <div id="win-history">
+                        <!-- История будет загружаться здесь -->
+                    </div>
+                </div>
+                
+                <div class="rules">
+                    <h3><i class="fas fa-info-circle"></i> ПРАВИЛА</h3>
+                    <ul>
+                        <li>3 одинаковых символа = выигрыш × множитель</li>
+                        <li>🍒 ×3 = ×3 | 🍋 ×3 = ×4 | 🍊 ×3 = ×5</li>
+                        <li>⭐ ×3 = ×20 + шанс на ДЖЕКПОТ!</li>
+                        <li>7️⃣ ×3 + удача = ДЖЕКПОТ!</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно выигрыша -->
+        <div id="win-modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2><i class="fas fa-trophy"></i> ПОЗДРАВЛЯЕМ!</h2>
+                <div class="win-amount" id="win-amount">0</div>
+                <p>Вы выиграли!</p>
+                <div class="win-symbols" id="win-symbols"></div>
+                <button id="continue-btn">ПРОДОЛЖИТЬ</button>
+            </div>
+        </div>
+
+        <!-- Админ ссылка (только для админа) -->
+        {% if user and user.username == 'admin' %}
+        <div class="admin-link">
+            <a href="/admin" target="_blank"><i class="fas fa-cog"></i> Админ-панель</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+    <script>
+        // Инициализация Telegram Web App
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Получаем данные пользователя из Telegram
+        const user = tg.initDataUnsafe.user;
+        let userId = '{{ user.telegram_id if user else "guest" }}';
+        let username = '{{ user.username if user else "Guest" }}';
+        
+        if (user) {
+            userId = user.id.toString();
+            username = user.username || user.first_name || 'Player';
+        }
+        
+        // Сохраняем для использования в game.js
+        window.userId = userId;
+        window.username = username;
+    </script>
+</body>
+</html>

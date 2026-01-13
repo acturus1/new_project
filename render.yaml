@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: telegram-casino-app
+    env: python
+    region: frankfurt  # или singapore для Азии, oregon для США
+    plan: free
+    branch: main
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      python init_db.py
+    startCommand: gunicorn app:app --worker-tmp-dir /dev/shm
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

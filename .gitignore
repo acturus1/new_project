@@ -1,2 +1,7 @@
+__pycache__/
+venv/
+*.pyc
+*.sqlite
 .env
-casino_users.json
+.DS_Store
+*.log

@@ -2,8 +2,6 @@ import os
 import json
 import logging
 import random
-import hashlib
-import hmac
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -26,14 +24,8 @@ if not TOKEN:
     print("Создайте файл .env и добавьте TELEGRAM_BOT_TOKEN=ваш_токен")
     exit(1)
 
-# Секретный ключ для подписи данных
-SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
-
 # База данных
 DATABASE_FILE = "casino_users.json"
-
-# Ссылка на ваш Mini App (замените на свою!)
-MINI_APP_URL = "https://new-project-amber-eight.vercel.app"
 
 class CasinoDB:
     def __init__(self, filename):
@@ -45,16 +37,13 @@ class CasinoDB:
             if os.path.exists(self.filename):
                 with open(self.filename, 'r', encoding='utf-8') as f:
                     return json.load(f)
-        except Exception as e:
-            logger.error(f"Ошибка загрузки БД: {e}")
+        except:
+            pass
         return {}
     
     def save_users(self):
-        try:
-            with open(self.filename, 'w', encoding='utf-8') as f:
-                json.dump(self.users, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Ошибка сохранения БД: {e}")
+        with open(self.filename, 'w', encoding='utf-8') as f:
+            json.dump(self.users, f, indent=2, ensure_ascii=False)
     
     def get_user(self, user_id):
         user_id_str = str(user_id)
@@ -67,8 +56,7 @@ class CasinoDB:
                 "total_losses": 0,
                 "biggest_win": 0,
                 "daily_bonus_claimed": False,
-                "created_at": datetime.now().isoformat(),
-                "last_played": None
+                "created_at": datetime.now().isoformat()
             }
             self.save_users()
         return self.users[user_id_str]
@@ -82,39 +70,23 @@ class CasinoDB:
 # Инициализация базы
 db = CasinoDB(DATABASE_FILE)
 
-def generate_signature(user_id, balance):
-    """Генерация подписи для проверки данных"""
-    message = f"{user_id}:{balance}"
-    return hmac.new(
-        SECRET_KEY.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
+# Ссылка на ваше Mini App (пока заглушка, потом замените)
+MINI_APP_URL = "https://new-project-amber-eight.vercel.app/"  # Замените на свою ссылку
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start с кнопкой для Mini App"""
     user = update.effective_user
     user_data = db.get_user(user.id)
     
-    # Сохраняем имя пользователя если еще нет
+    # Если нет имени, сохраняем
     if not user_data.get("name"):
         db.update_user(user.id, {"name": user.first_name})
     
-    # Генерируем подпись для безопасности
-    balance = user_data['balance']
-    signature = generate_signature(user.id, balance)
-    
-    # Создаем URL с данными пользователя И временной меткой
-    timestamp = int(datetime.now().timestamp())
-    mini_app_url = f"{MINI_APP_URL}?user_id={user.id}&balance={balance}&signature={signature}&ts={timestamp}"
-    
-    # Также сохраняем последний известный баланс для быстрого доступа
-    context.user_data['last_balance'] = balance
-    
+    # Главное меню с кнопкой для Mini App
     keyboard = [
         [InlineKeyboardButton(
             text="🎮 ОТКРЫТЬ КАЗИНО", 
-            web_app=WebAppInfo(url=mini_app_url)
+            web_app=WebAppInfo(url=f"{MINI_APP_URL}?user_id={user.id}")
         )],
         [
             InlineKeyboardButton("💰 Баланс", callback_data="balance"),
@@ -131,9 +103,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 💰 *Ваш баланс:* {user_data['balance']}₽
 
-🔄 *Баланс автоматически синхронизируется!*
-
 🚀 *Нажмите кнопку ниже, чтобы открыть игровой автомат!*
+
+🎮 *В игре вас ждет:*
+• Анимированные слоты
+• Реалистичные звуки
+• Профессиональный дизайн
+• Выигрышные комбинации
+
+⚡ *Минимальная ставка:* 10₽
+⚡ *Максимальная ставка:* 500₽
     """
     
     await update.message.reply_text(
@@ -142,101 +121,57 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def refresh_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновить игру с актуальным балансом"""
-    user = update.effective_user
-    user_data = db.get_user(user.id)
-    
-    # Генерируем новую ссылку с актуальным балансом
-    balance = user_data['balance']
-    signature = generate_signature(user.id, balance)
-    timestamp = int(datetime.now().timestamp())
-    
-    mini_app_url = f"{MINI_APP_URL}?user_id={user.id}&balance={balance}&signature={signature}&ts={timestamp}"
-    
-    keyboard = [[InlineKeyboardButton(
-        text="🔄 ОБНОВИТЬ ИГРУ", 
-        web_app=WebAppInfo(url=mini_app_url)
-    )]]
-    
-    await update.message.reply_text(
-        f"🔄 *Игра обновлена!*\n\n💰 *Актуальный баланс:* {balance}₽\n\nНажмите кнопку чтобы открыть игру с новым балансом:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
 async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка данных из Mini App - СИНХРОНИЗАЦИЯ БАЛАНСА"""
+    """Обработка данных из Mini App"""
     try:
         # Получаем данные от Mini App
         data_json = update.effective_message.web_app_data.data
         data = json.loads(data_json)
         user_id = update.effective_user.id
         
-        logger.info(f"Данные от Mini App пользователя {user_id}: {data}")
+        logger.info(f"Данные от Mini App: {data}")
         
-        # Получаем тип события
+        # Обработка разных событий
         event_type = data.get("event")
         
-        if event_type == "sync_balance":
-            # Синхронизация баланса
-            new_balance = data.get("balance", 0)
+        if event_type == "game_result":
+            # Результат игры
             bet = data.get("bet", 0)
             win = data.get("win", 0)
+            result = data.get("result", "")
             
             user_data = db.get_user(user_id)
             
-            # Проверяем подпись для безопасности
-            signature = data.get("signature")
-            expected_signature = generate_signature(user_id, new_balance)
-            
-            if signature != expected_signature:
-                logger.warning(f"Неверная подпись от пользователя {user_id}")
-                await update.message.reply_text("❌ Ошибка безопасности!")
-                return
-            
-            # Обновляем баланс в БД бота
-            old_balance = user_data["balance"]
-            user_data["balance"] = new_balance
-            
-            # Обновляем статистику
-            user_data["games_played"] += 1
-            user_data["last_played"] = datetime.now().isoformat()
-            
+            # Обновляем баланс
             if win > 0:
+                user_data["balance"] += win
                 user_data["total_wins"] += 1
                 user_data["biggest_win"] = max(user_data["biggest_win"], win)
                 message = f"🎉 *Поздравляем!* Вы выиграли {win}₽"
             else:
+                user_data["balance"] -= bet
                 user_data["total_losses"] += 1
                 message = f"😔 Вы проиграли {bet}₽"
             
+            user_data["games_played"] += 1
             db.save_users()
             
-            # Отправляем подтверждение
+            # Отправляем ответ пользователю
             await update.message.reply_text(
                 f"{message}\n\n"
-                f"💰 *Баланс обновлен:* {old_balance}₽ → {new_balance}₽\n"
-                f"📊 *Всего игр:* {user_data['games_played']}\n"
-                f"✅ *Выигрышей:* {user_data['total_wins']}\n"
-                f"❌ *Проигрышей:* {user_data['total_losses']}",
+                f"💰 *Новый баланс:* {user_data['balance']}₽\n"
+                f"📊 *Всего игр:* {user_data['games_played']}",
                 parse_mode='Markdown'
             )
             
         elif event_type == "get_balance":
             # Запрос баланса из Mini App
             user_data = db.get_user(user_id)
-            signature = generate_signature(user_id, user_data["balance"])
-            
-            # Отправляем баланс обратно в Mini App
             await update.message.reply_text(
-                f"💰 *Ваш баланс:* {user_data['balance']}₽\n"
-                f"🔐 *Подпись:* {signature}",
+                f"💰 *Ваш баланс:* {user_data['balance']}₽",
                 parse_mode='Markdown'
             )
             
-    except json.JSONDecodeError:
-        logger.error("Невалидный JSON от Mini App")
-        await update.message.reply_text("❌ Ошибка формата данных")
     except Exception as e:
         logger.error(f"Ошибка обработки WebApp данных: {e}")
         await update.message.reply_text("❌ Произошла ошибка при обработке данных игры")
@@ -289,23 +224,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         bonus = random.randint(50, 200)
-        new_balance = user_data['balance'] + bonus
+        user_data['balance'] += bonus
         db.update_user(user_id, {
-            'balance': new_balance,
+            'balance': user_data['balance'],
             'daily_bonus_claimed': True
         })
         
         await query.edit_message_text(
             f"🎁 *Ежедневный бонус!*\n\n"
             f"💰 Вы получили: *{bonus}₽*\n"
-            f"📊 Новый баланс: *{new_balance}₽*\n\n"
+            f"📊 Новый баланс: *{user_data['balance']}₽*\n\n"
             f"🎰 Нажмите 'ОТКРЫТЬ КАЗИНО' чтобы начать игру!",
             parse_mode='Markdown'
         )
         
     elif data == "help":
         help_text = """
-🎰 *Правила игры в казино 5×5*
+🎰 *Правила игры в казино*
 
 💰 *Как играть:*
 1. Нажмите кнопку "ОТКРЫТЬ КАЗИНО"
@@ -314,60 +249,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 4. Получайте выигрыш!
 
 🎪 *Выигрышные комбинации:*
-• 3+ одинаковых символа = множитель
-• 5 одинаковых = ДЖЕКПОТ ×100
-• Диагонали дают ×2
+• 2 одинаковых символа = ×2 ставки
+• 3 одинаковых символа = множитель символа
 
 ⚡ *Символы и множители:*
-🍒 - x5   🍋 - x5   🍊 - x5
-🍇 - x8   🔔 - x10  ⭐ - x15  7️⃣ - x20
+🍒 - x2   🍋 - x3   🍊 - x4
+🍇 - x5   🔔 - x10  ⭐ - x20  7️⃣ - x100
 
 🎁 *Бонусы:*
 • Ежедневный бонус: 50-200₽
 • Стартовый баланс: 1000₽
 
-🔒 *Баланс синхронизируется с ботом!*
+📞 *Поддержка:* @ваш_ник
         """
         await query.edit_message_text(help_text, parse_mode='Markdown')
-
-async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /balance"""
-    user = update.effective_user
-    user_data = db.get_user(user.id)
-    
-    await update.message.reply_text(
-        f"💰 *Ваш баланс:* {user_data['balance']}₽\n\n"
-        f"🎮 Статистика:\n"
-        f"• Игр: {user_data['games_played']}\n"
-        f"• Побед: {user_data['total_wins']}\n"
-        f"• Рекорд: {user_data['biggest_win']}₽",
-        parse_mode='Markdown'
-    )
-
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /stats"""
-    user = update.effective_user
-    user_data = db.get_user(user.id)
-    
-    total_games = user_data['games_played']
-    win_rate = (user_data['total_wins'] / total_games * 100) if total_games > 0 else 0
-    
-    await update.message.reply_text(
-        f"📊 *Статистика*\n\n"
-        f"👤 Игрок: {user.first_name}\n"
-        f"🎰 Игр: {total_games}\n"
-        f"✅ Побед: {user_data['total_wins']}\n"
-        f"❌ Поражений: {user_data['total_losses']}\n"
-        f"📈 Win Rate: {win_rate:.1f}%\n\n"
-        f"💰 Баланс: {user_data['balance']}₽\n"
-        f"🏆 Рекорд: {user_data['biggest_win']}₽",
-        parse_mode='Markdown'
-    )
-
-async def bonus_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /bonus"""
-    user = update.effective_user
-    await button_handler(update, context)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /help"""
@@ -378,37 +273,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats - Статистика\n"
         "/bonus - Ежедневный бонус\n"
         "/help - Эта справка\n\n"
-        "🎰 *Баланс синхронизируется между ботом и игрой!*\n"
-        "🔒 *Играйте ответственно!*",
+        "🎰 *Играйте ответственно!*",
         parse_mode='Markdown'
     )
 
 def main():
     """Запуск бота"""
-    print("🎰 Запуск бота-казино с синхронизацией баланса...")
+    print("🎰 Запуск бота-казино с Mini App...")
     print(f"📱 Mini App URL: {MINI_APP_URL}")
-    print(f"🔐 Секретный ключ: {SECRET_KEY[:10]}...")
-    
-    # Проверяем файл БД
-    if os.path.exists(DATABASE_FILE):
-        print(f"📁 База данных: {DATABASE_FILE} ({os.path.getsize(DATABASE_FILE)} байт)")
-    else:
-        print("📁 База данных: создана новая")
     
     # Создаем приложение
     application = Application.builder().token(TOKEN).build()
     
-    # Добавляем обработчики команд
+    # Добавляем обработчики
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("balance", balance_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("bonus", bonus_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("balance", lambda u, c: button_handler(u, c)))
+    application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
+    application.add_handler(CommandHandler("bonus", lambda u, c: button_handler(u, c)))
     
-    # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Обработчик данных из Mini App (важно - должен быть после остальных!)
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
     
     # Запускаем

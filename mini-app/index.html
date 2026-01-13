@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎰 Casino Slots</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Шапка -->
+        <div class="header">
+            <h1><i class="fas fa-coins"></i> CASINO SLOTS</h1>
+            <div class="balance-container">
+                <div class="balance" id="balance">1000 ₽</div>
+                <button class="refresh-btn" id="refreshBalance">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Игровой автомат -->
+        <div class="slot-machine">
+            <!-- Барабаны -->
+            <div class="reels-container">
+                <div class="reels" id="reels">
+                    <div class="reel" id="reel1">🍒</div>
+                    <div class="reel" id="reel2">🍋</div>
+                    <div class="reel" id="reel3">🍊</div>
+                </div>
+                <div class="reel-overlay"></div>
+            </div>
+
+            <!-- Управление ставками -->
+            <div class="bet-controls">
+                <div class="bet-title">СТАВКА:</div>
+                <div class="bet-buttons">
+                    <button class="bet-btn" data-bet="10">10 ₽</button>
+                    <button class="bet-btn" data-bet="50">50 ₽</button>
+                    <button class="bet-btn" data-bet="100">100 ₽</button>
+                    <button class="bet-btn" data-bet="250">250 ₽</button>
+                    <button class="bet-btn" data-bet="500">500 ₽</button>
+                </div>
+                <div class="bet-display">
+                    <button class="bet-minus" id="betMinus">−</button>
+                    <div class="current-bet" id="currentBet">100 ₽</div>
+                    <button class="bet-plus" id="betPlus">+</button>
+                </div>
+            </div>
+
+            <!-- Кнопка вращения -->
+            <button class="spin-btn" id="spinBtn">
+                <i class="fas fa-play"></i> КРУТИТЬ!
+            </button>
+
+            <!-- Результат -->
+            <div class="result-container">
+                <div class="result" id="result">
+                    Выберите ставку и нажмите "КРУТИТЬ!"
+                </div>
+                <div class="win-amount" id="winAmount"></div>
+            </div>
+        </div>
+
+        <!-- Статистика -->
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-label">Игр сыграно</div>
+                <div class="stat-value" id="gamesPlayed">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Выигрышей</div>
+                <div class="stat-value" id="winsCount">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Рекорд</div>
+                <div class="stat-value" id="biggestWin">0 ₽</div>
+            </div>
+        </div>
+
+        <!-- Символы -->
+        <div class="symbols-info">
+            <h3><i class="fas fa-star"></i> СИМВОЛЫ И МНОЖИТЕЛИ</h3>
+            <div class="symbols-grid">
+                <div class="symbol-card">
+                    <div class="symbol-emoji">🍒</div>
+                    <div class="symbol-multiplier">x2</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">🍋</div>
+                    <div class="symbol-multiplier">x3</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">🍊</div>
+                    <div class="symbol-multiplier">x4</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">🍇</div>
+                    <div class="symbol-multiplier">x5</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">🔔</div>
+                    <div class="symbol-multiplier">x10</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">⭐</div>
+                    <div class="symbol-multiplier">x20</div>
+                </div>
+                <div class="symbol-card">
+                    <div class="symbol-emoji">7️⃣</div>
+                    <div class="symbol-multiplier">x100</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Информация -->
+        <div class="info">
+            <p><i class="fas fa-info-circle"></i> Два одинаковых символа = ×2 ставки</p>
+            <p><i class="fas fa-info-circle"></i> Три одинаковых символа = множитель символа</p>
+            <p><i class="fas fa-info-circle"></i> Минимальная ставка: 10 ₽</p>
+            <p><i class="fas fa-info-circle"></i> Максимальная ставка: 500 ₽</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,32 +1,74 @@
-// Конфигурация игры
+// Конфигурация игры 5x3
 const CONFIG = {
     symbols: [
-        { emoji: "🍒", weight: 30, multiplier: 2 },
-        { emoji: "🍋", weight: 25, multiplier: 3 },
-        { emoji: "🍊", weight: 20, multiplier: 4 },
-        { emoji: "🍇", weight: 15, multiplier: 5 },
-        { emoji: "🔔", weight: 7, multiplier: 10 },
-        { emoji: "⭐", weight: 2, multiplier: 20 },
-        { emoji: "7️⃣", weight: 1, multiplier: 100 }
+        { emoji: "🍒", weight: 25, multipliers: {3: 3, 4: 5, 5: 10} },
+        { emoji: "🍋", weight: 20, multipliers: {3: 3, 4: 5, 5: 8} },
+        { emoji: "🍊", weight: 18, multipliers: {3: 3, 4: 5, 5: 8} },
+        { emoji: "🍇", weight: 15, multipliers: {3: 5, 4: 8, 5: 12} },
+        { emoji: "🔔", weight: 10, multipliers: {3: 8, 4: 12, 5: 20} },
+        { emoji: "⭐", weight: 5, multipliers: {3: 10, 4: 20, 5: 50} },
+        { emoji: "7️⃣", weight: 3, multipliers: {3: 20, 4: 50, 5: 100} },
+        { emoji: "🃏", weight: 4, multipliers: {3: 2, 4: 3, 5: 5}, isWild: true }
     ],
-    minBet: 10,
-    maxBet: 500
+    minBet: 1,
+    maxBet: 50,
+    lines: 20,
+    reels: 5,
+    rows: 3
 };
+
+// Линии выигрыша для 5x3 (20 линий)
+const PAYLINES = [
+    // Горизонтальные линии
+    [[0,0], [1,0], [2,0], [3,0], [4,0]], // Линия 1: верхний ряд
+    [[0,1], [1,1], [2,1], [3,1], [4,1]], // Линия 2: средний ряд
+    [[0,2], [1,2], [2,2], [3,2], [4,2]], // Линия 3: нижний ряд
+    
+    // V-образные линии
+    [[0,0], [1,1], [2,2], [3,1], [4,0]], // Линия 4: V сверху
+    [[0,2], [1,1], [2,0], [3,1], [4,2]], // Линия 5: V снизу
+    
+    // /\-образные линии
+    [[0,1], [1,0], [2,0], [3,0], [4,1]], // Линия 6
+    [[0,1], [1,2], [2,2], [3,2], [4,1]], // Линия 7
+    
+    // Зигзаги
+    [[0,0], [1,0], [2,1], [3,2], [4,2]], // Линия 8
+    [[0,2], [1,2], [2,1], [3,0], [4,0]], // Линия 9
+    [[0,0], [1,1], [2,1], [3,1], [4,0]], // Линия 10
+    [[0,2], [1,1], [2,1], [3,1], [4,2]], // Линия 11
+    
+    // Ступеньки
+    [[0,0], [1,1], [2,0], [3,1], [4,0]], // Линия 12
+    [[0,2], [1,1], [2,2], [3,1], [4,2]], // Линия 13
+    [[0,1], [1,0], [2,1], [3,0], [4,1]], // Линия 14
+    [[0,1], [1,2], [2,1], [3,2], [4,1]], // Линия 15
+    
+    // Угловые
+    [[0,0], [1,0], [2,1], [3,2], [4,2]], // Линия 16
+    [[0,2], [1,2], [2,1], [3,0], [4,0]], // Линия 17
+    [[0,0], [1,1], [2,2], [3,2], [4,2]], // Линия 18
+    [[0,2], [1,1], [2,0], [3,0], [4,0]], // Линия 19
+    [[0,0], [0,1], [0,2], [1,1], [2,0]]  // Линия 20
+];
 
 // Состояние игры
 class GameState {
     constructor() {
         this.balance = 1000;
-        this.currentBet = 100;
+        this.currentBetPerLine = 10;
         this.isSpinning = false;
         this.gamesPlayed = 0;
         this.winsCount = 0;
         this.biggestWin = 0;
         this.userId = this.getUserId();
+        this.activeLines = CONFIG.lines;
         this.init();
     }
 
     init() {
+        this.createReelsGrid();
+        this.createPaylinesDisplay();
         this.updateDisplay();
         this.setupEventListeners();
         this.loadFromStorage();
@@ -34,43 +76,59 @@ class GameState {
     }
 
     getUserId() {
-        // Получаем user_id из URL параметров
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('user_id') || 'guest';
     }
 
     setupTelegram() {
-        // Интеграция с Telegram Web App
         if (window.Telegram && window.Telegram.WebApp) {
             const tg = window.Telegram.WebApp;
-            
-            // Разворачиваем на весь экран
             tg.expand();
             tg.ready();
-            
-            // Меняем цвет интерфейса Telegram
-            tg.setHeaderColor('#302b63');
-            tg.setBackgroundColor('#0f0c29');
-            
-            console.log('Telegram WebApp initialized for user:', tg.initDataUnsafe?.user);
-            
-            // Получаем данные пользователя из бота
-            this.fetchUserData();
+            console.log('Telegram WebApp initialized');
         }
     }
 
-    async fetchUserData() {
-        try {
-            // Здесь можно добавить запрос к API бота для получения данных
-            // Пока используем локальные данные
-            console.log('Fetching user data for ID:', this.userId);
-        } catch (error) {
-            console.error('Error fetching user data:', error);
+    createReelsGrid() {
+        const grid = document.getElementById('reelsGrid');
+        grid.innerHTML = '';
+        
+        // Создаем сетку 3 ряда × 5 колонок
+        for (let row = 0; row < CONFIG.rows; row++) {
+            for (let col = 0; col < CONFIG.reels; col++) {
+                const cell = document.createElement('div');
+                cell.className = 'reel-cell';
+                cell.id = `reel-${col}-${row}`;
+                cell.textContent = '?';
+                grid.appendChild(cell);
+            }
         }
+    }
+
+    createPaylinesDisplay() {
+        const grid = document.getElementById('paylinesGrid');
+        grid.innerHTML = '';
+        
+        for (let i = 0; i < CONFIG.lines; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'payline-btn active';
+            btn.textContent = `L${i + 1}`;
+            btn.dataset.line = i;
+            btn.addEventListener('click', (e) => {
+                this.toggleLine(parseInt(e.target.dataset.line));
+            });
+            grid.appendChild(btn);
+        }
+    }
+
+    toggleLine(lineIndex) {
+        const btn = document.querySelector(`.payline-btn[data-line="${lineIndex}"]`);
+        btn.classList.toggle('active');
+        this.activeLines = document.querySelectorAll('.payline-btn.active').length;
+        this.updateDisplay();
     }
 
     setupEventListeners() {
-        // Кнопки ставок
         document.querySelectorAll('.bet-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 if (this.isSpinning) return;
@@ -79,23 +137,10 @@ class GameState {
             });
         });
 
-        // Кнопки +/- ставки
-        document.getElementById('betMinus').addEventListener('click', () => {
-            if (this.isSpinning) return;
-            this.setBet(Math.max(CONFIG.minBet, this.currentBet - 10));
-        });
-
-        document.getElementById('betPlus').addEventListener('click', () => {
-            if (this.isSpinning) return;
-            this.setBet(Math.min(CONFIG.maxBet, this.currentBet + 10));
-        });
-
-        // Кнопка вращения
         document.getElementById('spinBtn').addEventListener('click', () => {
             this.spin();
         });
 
-        // Кнопка обновления баланса
         document.getElementById('refreshBalance').addEventListener('click', () => {
             this.fetchUserData();
         });
@@ -104,27 +149,24 @@ class GameState {
     setBet(amount) {
         if (this.isSpinning) return;
         
-        // Проверяем минимальную ставку
         if (amount < CONFIG.minBet) {
             this.showMessage(`Минимальная ставка: ${CONFIG.minBet}₽`, 'error');
             return;
         }
         
-        // Проверяем максимальную ставку
         if (amount > CONFIG.maxBet) {
             this.showMessage(`Максимальная ставка: ${CONFIG.maxBet}₽`, 'error');
             return;
         }
         
-        // Проверяем баланс
-        if (amount > this.balance) {
+        const totalBet = amount * this.activeLines;
+        if (totalBet > this.balance) {
             this.showMessage('Недостаточно средств!', 'error');
             return;
         }
         
-        this.currentBet = amount;
+        this.currentBetPerLine = amount;
         
-        // Обновляем активную кнопку
         document.querySelectorAll('.bet-btn').forEach(btn => {
             btn.classList.remove('active');
             if (parseInt(btn.dataset.bet) === amount) {
@@ -132,13 +174,14 @@ class GameState {
             }
         });
         
-        // Обновляем отображение
-        document.getElementById('currentBet').textContent = `${amount} ₽`;
+        this.updateDisplay();
     }
 
     async spin() {
         if (this.isSpinning) return;
-        if (this.currentBet > this.balance) {
+        
+        const totalBet = this.currentBetPerLine * this.activeLines;
+        if (totalBet > this.balance) {
             this.showMessage('Недостаточно средств!', 'error');
             return;
         }
@@ -146,80 +189,64 @@ class GameState {
         this.isSpinning = true;
         this.gamesPlayed++;
         
-        // Снимаем ставку
-        this.balance -= this.currentBet;
+        this.balance -= totalBet;
         this.updateDisplay();
         
-        // Блокируем кнопки
         document.getElementById('spinBtn').disabled = true;
         document.getElementById('spinBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> КРУТИТСЯ...';
 
-        // Анимация вращения
         await this.animateSpin();
         
-        // Генерация результата
         const result = this.generateResult();
-        
-        // Отображение результата
         this.displayResult(result);
         
-        // Проверка выигрыша
-        const win = this.checkWin(result);
+        const winResult = this.checkAllLines(result);
         
-        if (win > 0) {
-            // Выигрыш
-            this.balance += win;
+        if (winResult.totalWin > 0) {
+            this.balance += winResult.totalWin;
             this.winsCount++;
-            this.biggestWin = Math.max(this.biggestWin, win);
-            this.showWin(win);
-            
-            // Отправляем результат в Telegram бот
-            this.sendToTelegram('win', win);
+            this.biggestWin = Math.max(this.biggestWin, winResult.totalWin);
+            this.showWin(winResult);
+            this.sendToTelegram('win', winResult.totalWin);
         } else {
-            // Проигрыш
             this.showMessage('😔 Нет выигрыша', 'lose');
-            this.sendToTelegram('loss', this.currentBet);
+            this.sendToTelegram('loss', totalBet);
         }
 
-        // Разблокируем кнопки
         this.isSpinning = false;
         document.getElementById('spinBtn').disabled = false;
         document.getElementById('spinBtn').innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
         
-        // Сохраняем состояние
         this.saveToStorage();
         this.updateDisplay();
     }
 
     async animateSpin() {
-        const reels = document.querySelectorAll('.reel');
+        const cells = document.querySelectorAll('.reel-cell');
         const symbols = CONFIG.symbols;
         
-        // Быстрая анимация вращения
-        for (let i = 0; i < 20; i++) {
-            reels.forEach(reel => {
+        for (let i = 0; i < 30; i++) {
+            cells.forEach(cell => {
                 const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-                reel.textContent = randomSymbol.emoji;
-                reel.style.transform = `scale(${1 + Math.random() * 0.2})`;
+                cell.textContent = randomSymbol.emoji;
+                cell.style.transform = `scale(${1 + Math.random() * 0.2})`;
             });
-            await this.sleep(50 + i * 5); // Замедляемся
+            await this.sleep(50 + i * 2);
         }
         
-        // Завершающая анимация
         for (let i = 0; i < 3; i++) {
-            reels.forEach(reel => {
-                reel.style.transform = 'scale(1.1)';
+            cells.forEach(cell => {
+                cell.style.transform = 'scale(1.1)';
             });
             await this.sleep(100);
-            reels.forEach(reel => {
-                reel.style.transform = 'scale(1)';
+            cells.forEach(cell => {
+                cell.style.transform = 'scale(1)';
             });
             await this.sleep(100);
         }
     }
 
     generateResult() {
-        // Генерация результата с учетом весов символов
         const weightedSymbols = [];
         CONFIG.symbols.forEach(symbol => {
             for (let i = 0; i < symbol.weight; i++) {
@@ -228,93 +255,128 @@ class GameState {
         });
 
         const result = [];
-        for (let i = 0; i < 3; i++) {
-            const randomIndex = Math.floor(Math.random() * weightedSymbols.length);
-            result.push(weightedSymbols[randomIndex]);
+        for (let row = 0; row < CONFIG.rows; row++) {
+            for (let col = 0; col < CONFIG.reels; col++) {
+                const randomIndex = Math.floor(Math.random() * weightedSymbols.length);
+                result.push(weightedSymbols[randomIndex]);
+            }
         }
-
-        // Отображаем результат
-        const reels = document.querySelectorAll('.reel');
-        reels.forEach((reel, index) => {
-            reel.textContent = result[index].emoji;
-        });
 
         return result;
     }
 
-    checkWin(result) {
-        // Проверяем три одинаковых символа
-        if (result[0].emoji === result[1].emoji && result[1].emoji === result[2].emoji) {
-            return this.currentBet * result[0].multiplier;
+    displayResult(result) {
+        const cells = document.querySelectorAll('.reel-cell');
+        
+        cells.forEach((cell, index) => {
+            cell.textContent = result[index].emoji;
+            cell.classList.remove('win', 'wild');
+            
+            if (result[index].isWild) {
+                cell.classList.add('wild');
+            }
+        });
+    }
+
+    checkAllLines(result) {
+        const winningLines = [];
+        let totalWin = 0;
+        
+        PAYLINES.forEach((line, lineIndex) => {
+            const lineSymbols = [];
+            let hasWild = false;
+            
+            line.forEach(([col, row]) => {
+                const index = row * CONFIG.reels + col;
+                lineSymbols.push(result[index]);
+                if (result[index].isWild) {
+                    hasWild = true;
+                }
+            });
+            
+            const win = this.checkLine(lineSymbols, hasWild);
+            if (win > 0) {
+                winningLines.push({
+                    line: lineIndex + 1,
+                    win: win,
+                    symbols: lineSymbols
+                });
+                totalWin += win;
+            }
+        });
+        
+        return {
+            winningLines: winningLines,
+            totalWin: totalWin
+        };
+    }
+
+    checkLine(symbols, hasWild) {
+        let mainSymbol = null;
+        let count = 0;
+        
+        for (let i = 0; i < symbols.length; i++) {
+            if (symbols[i].isWild) {
+                count++;
+                continue;
+            }
+            
+            if (!mainSymbol) {
+                mainSymbol = symbols[i];
+                count++;
+            } else if (symbols[i].emoji === mainSymbol.emoji) {
+                count++;
+            } else {
+                break;
+            }
         }
         
-        // Проверяем два одинаковых символа
-        if (result[0].emoji === result[1].emoji || 
-            result[0].emoji === result[2].emoji || 
-            result[1].emoji === result[2].emoji) {
-            return this.currentBet * 2;
+        if (count >= 3 && mainSymbol) {
+            const multiplier = mainSymbol.multipliers[count] || 0;
+            return this.currentBetPerLine * multiplier;
         }
         
         return 0;
     }
 
-    displayResult(result) {
-        const reels = document.querySelectorAll('.reel');
-        reels.forEach((reel, index) => {
-            reel.textContent = result[index].emoji;
-            reel.classList.add('win-animation');
-        });
-        
-        setTimeout(() => {
-            reels.forEach(reel => {
-                reel.classList.remove('win-animation');
-            });
-        }, 1500);
-    }
-
-    showWin(amount) {
+    showWin(winResult) {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
+        const winLinesElement = document.getElementById('winLines');
         
-        // Определяем уровень выигрыша
-        let message = '';
-        if (amount >= this.currentBet * 100) {
-            message = '🎉 ДЖЕКПОТ!';
-        } else if (amount >= this.currentBet * 20) {
-            message = '🌟 ОГРОМНЫЙ ВЫИГРЫШ!';
-        } else if (amount >= this.currentBet * 10) {
-            message = '✨ БОЛЬШОЙ ВЫИГРЫШ!';
-        } else if (amount >= this.currentBet * 5) {
-            message = '👍 ОТЛИЧНЫЙ ВЫИГРЫШ!';
-        } else {
-            message = '👌 ХОРОШИЙ ВЫИГРЫШ!';
-        }
+        winResult.winningLines.forEach(winLine => {
+            PAYLINES[winLine.line - 1].forEach(([col, row]) => {
+                const cell = document.getElementById(`reel-${col}-${row}`);
+                cell.classList.add('win');
+            });
+        });
         
-        resultElement.textContent = message;
+        resultElement.textContent = `🎉 ВЫИГРЫШ ПО ${winResult.winningLines.length} ЛИНИЯМ!`;
         resultElement.style.color = '#00FF00';
         
-        winAmountElement.textContent = `+${amount} ₽`;
+        winAmountElement.textContent = `+${winResult.totalWin} ₽`;
         winAmountElement.style.display = 'block';
         
-        // Анимация
+        if (winResult.winningLines.length > 0) {
+            winLinesElement.textContent = `Линии: ${winResult.winningLines.map(w => w.line).join(', ')}`;
+        }
+        
         winAmountElement.classList.add('win-animation');
         setTimeout(() => {
             winAmountElement.classList.remove('win-animation');
         }, 1500);
-        
-        // Звук выигрыша (можно добавить позже)
-        // this.playSound('win');
     }
 
     showMessage(text, type = 'info') {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
+        const winLinesElement = document.getElementById('winLines');
         
         resultElement.textContent = text;
         winAmountElement.textContent = '';
+        winLinesElement.textContent = '';
         winAmountElement.style.display = 'none';
         
-        // Цвет в зависимости от типа сообщения
         if (type === 'error') {
             resultElement.style.color = '#FF4444';
         } else if (type === 'win') {
@@ -327,21 +389,21 @@ class GameState {
     }
 
     updateDisplay() {
-        // Баланс
+        const totalBet = this.currentBetPerLine * this.activeLines;
+        
         document.getElementById('balance').textContent = `${this.balance} ₽`;
+        document.getElementById('totalBet').textContent = `${totalBet} ₽`;
+        document.getElementById('activeLines').textContent = this.activeLines;
+        document.getElementById('winningLines').textContent = '0';
+        document.getElementById('totalMultiplier').textContent = '0x';
         
-        // Текущая ставка
-        document.getElementById('currentBet').textContent = `${this.currentBet} ₽`;
-        
-        // Статистика
         document.getElementById('gamesPlayed').textContent = this.gamesPlayed;
         document.getElementById('winsCount').textContent = this.winsCount;
         document.getElementById('biggestWin').textContent = `${this.biggestWin} ₽`;
         
-        // Обновляем активную кнопку ставки
         document.querySelectorAll('.bet-btn').forEach(btn => {
             btn.classList.remove('active');
-            if (parseInt(btn.dataset.bet) === this.currentBet) {
+            if (parseInt(btn.dataset.bet) === this.currentBetPerLine) {
                 btn.classList.add('active');
             }
         });
@@ -354,16 +416,14 @@ class GameState {
             const data = {
                 event: 'game_result',
                 user_id: this.userId,
-                bet: this.currentBet,
+                bet: this.currentBetPerLine * this.activeLines,
                 win: event === 'win' ? amount : 0,
                 result: event,
                 balance: this.balance,
                 timestamp: new Date().toISOString()
             };
             
-            // Отправляем данные в бота
             tg.sendData(JSON.stringify(data));
-            console.log('Data sent to Telegram:', data);
         }
     }
 
@@ -376,11 +436,11 @@ class GameState {
             lastPlayed: new Date().toISOString()
         };
         
-        localStorage.setItem(`casino_${this.userId}`, JSON.stringify(data));
+        localStorage.setItem(`casino_5x_${this.userId}`, JSON.stringify(data));
     }
 
     loadFromStorage() {
-        const data = localStorage.getItem(`casino_${this.userId}`);
+        const data = localStorage.getItem(`casino_5x_${this.userId}`);
         if (data) {
             try {
                 const saved = JSON.parse(data);
@@ -399,32 +459,16 @@ class GameState {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Метод для воспроизведения звуков (можно добавить позже)
-    playSound(soundName) {
-        // const audio = new Audio(`sounds/${soundName}.mp3`);
-        // audio.play().catch(e => console.log('Audio play failed:', e));
+    fetchUserData() {
+        console.log('Fetching user data for ID:', this.userId);
     }
 }
 
-// Инициализация игры при загрузке страницы
+// Инициализация игры
 let game;
 
 document.addEventListener('DOMContentLoaded', () => {
     game = new GameState();
-    
-    // Добавляем стили для анимаций
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        
-        .blink {
-            animation: blink 0.5s ease-in-out 3;
-        }
-    `;
-    document.head.appendChild(style);
 });
 
 // Экспортируем для отладки

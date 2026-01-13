@@ -71,7 +71,8 @@ class CasinoDB:
 db = CasinoDB(DATABASE_FILE)
 
 # Ссылка на ваше Mini App (пока заглушка, потом замените)
-MINI_APP_URL = "https://telegram-webapp-stub.vercel.app/" # Замените на свою ссылку
+MINI_APP_URL = "https://new-project-amber-eight.vercel.app/"
+ # Замените на свою ссылку
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда /start с кнопкой для Mini App"""

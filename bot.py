@@ -33,7 +33,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 DATABASE_FILE = "casino_users.json"
 
 # Ссылка на ваш Mini App (замените на свою!)
-MINI_APP_URL = "https://ваш-mini-app.vercel.app"
+MINI_APP_URL = "https://new-project-amber-eight.vercel.app"
 
 class CasinoDB:
     def __init__(self, filename):
@@ -104,8 +104,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     balance = user_data['balance']
     signature = generate_signature(user.id, balance)
     
-    # Создаем URL с данными пользователя
-    mini_app_url = f"{MINI_APP_URL}?user_id={user.id}&balance={balance}&signature={signature}"
+    # Создаем URL с данными пользователя И временной меткой
+    timestamp = int(datetime.now().timestamp())
+    mini_app_url = f"{MINI_APP_URL}?user_id={user.id}&balance={balance}&signature={signature}&ts={timestamp}"
+    
+    # Также сохраняем последний известный баланс для быстрого доступа
+    context.user_data['last_balance'] = balance
     
     keyboard = [
         [InlineKeyboardButton(
@@ -127,16 +131,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 💰 *Ваш баланс:* {user_data['balance']}₽
 
+🔄 *Баланс автоматически синхронизируется!*
+
 🚀 *Нажмите кнопку ниже, чтобы открыть игровой автомат!*
-
-🎮 *В игре вас ждет:*
-• 5×5 слотов с 25 символами
-• Анимированные вращения
-• Реалистичные звуки
-• Выигрышные комбинации
-
-⚡ *Минимальная ставка:* 10₽
-⚡ *Максимальная ставка:* 500₽
     """
     
     await update.message.reply_text(
@@ -145,6 +142,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def refresh_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновить игру с актуальным балансом"""
+    user = update.effective_user
+    user_data = db.get_user(user.id)
+    
+    # Генерируем новую ссылку с актуальным балансом
+    balance = user_data['balance']
+    signature = generate_signature(user.id, balance)
+    timestamp = int(datetime.now().timestamp())
+    
+    mini_app_url = f"{MINI_APP_URL}?user_id={user.id}&balance={balance}&signature={signature}&ts={timestamp}"
+    
+    keyboard = [[InlineKeyboardButton(
+        text="🔄 ОБНОВИТЬ ИГРУ", 
+        web_app=WebAppInfo(url=mini_app_url)
+    )]]
+    
+    await update.message.reply_text(
+        f"🔄 *Игра обновлена!*\n\n💰 *Актуальный баланс:* {balance}₽\n\nНажмите кнопку чтобы открыть игру с новым балансом:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
 async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка данных из Mini App - СИНХРОНИЗАЦИЯ БАЛАНСА"""
     try:

@@ -861,6 +861,49 @@ if (window.Telegram && window.Telegram.WebApp) {
         console.log('Theme changed');
     });
 }
-
+async function getBalanceFromBot() {
+    if (!window.Telegram || !window.Telegram.WebApp) {
+        console.log('Не в Telegram WebApp');
+        return null;
+    }
+    
+    try {
+        const tg = window.Telegram.WebApp;
+        
+        // Отправляем запрос баланса боту
+        const requestData = {
+            event: 'get_balance',
+            user_id: game.userId,
+            timestamp: new Date().toISOString()
+        };
+        
+        // Сохраняем promise для получения ответа
+        return new Promise((resolve) => {
+            // Устанавливаем обработчик ответа
+            const originalSendData = tg.sendData;
+            tg.sendData = function(data) {
+                console.log('Отправка данных боту:', data);
+                originalSendData.call(this, data);
+                
+                // Ждем ответ от бота (в реальности нужен WebSocket или polling)
+                setTimeout(() => {
+                    // Временное решение - использовать localStorage как кэш
+                    const cachedBalance = localStorage.getItem(`last_balance_${game.userId}`);
+                    if (cachedBalance) {
+                        resolve(parseInt(cachedBalance));
+                    } else {
+                        resolve(game.balance);
+                    }
+                }, 500);
+            };
+            
+            tg.sendData(JSON.stringify(requestData));
+        });
+        
+    } catch (error) {
+        console.error('Ошибка запроса баланса:', error);
+        return null;
+    }
+}
 // Экспортируем для отладки
 window.Game = GameState;

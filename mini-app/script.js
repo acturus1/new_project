@@ -17,14 +17,21 @@ const CONFIG = {
 // Состояние игры
 class GameState {
     constructor() {
-        this.balance = 1000;
+        // Получаем данные из URL параметров (от бота)
+        const urlParams = new URLSearchParams(window.location.search);
+        this.userId = urlParams.get('user_id') || 'guest';
+        this.initialBalance = parseInt(urlParams.get('balance')) || 1000;
+        this.signature = urlParams.get('signature') || '';
+        
+        // Инициализируем состояние
+        this.balance = this.initialBalance;
         this.currentBet = 50;
         this.isSpinning = false;
         this.gamesPlayed = 0;
         this.winsCount = 0;
         this.biggestWin = 0;
-        this.userId = this.getUserId();
         this.isMobile = this.checkMobile();
+        
         this.init();
     }
 
@@ -35,16 +42,18 @@ class GameState {
         this.loadFromStorage();
         this.setupTelegram();
         this.setupMobileFeatures();
+        
+        // Настраиваем статус синхронизации
+        if (window.Telegram && window.Telegram.WebApp) {
+            this.updateSyncStatus('ready');
+        } else {
+            this.updateSyncStatus('offline');
+        }
     }
 
     checkMobile() {
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                window.innerWidth <= 768;
-    }
-
-    getUserId() {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('user_id') || 'guest';
     }
 
     setupTelegram() {
@@ -54,6 +63,46 @@ class GameState {
             tg.ready();
             tg.setHeaderColor('#302b63');
             tg.setBackgroundColor('#0f0c29');
+            
+            // Показываем пользователя
+            const user = tg.initDataUnsafe?.user;
+            if (user) {
+                console.log('Telegram user:', user.first_name, user.id);
+            }
+        }
+    }
+
+    updateSyncStatus(status, message) {
+        const syncDot = document.getElementById('syncDot');
+        const syncText = document.getElementById('syncText');
+        const syncInfo = document.getElementById('syncInfo');
+        
+        if (!syncDot || !syncText || !syncInfo) return;
+        
+        const statusConfig = {
+            'ready': { color: '#2ecc71', text: 'Готов к синхронизации' },
+            'syncing': { color: '#f39c12', text: 'Синхронизация...', animate: true },
+            'success': { color: '#27ae60', text: 'Баланс обновлен' },
+            'error': { color: '#e74c3c', text: 'Ошибка синхронизации' },
+            'offline': { color: '#95a5a6', text: 'Офлайн режим' }
+        };
+        
+        const config = statusConfig[status] || statusConfig.ready;
+        
+        syncDot.style.background = config.color;
+        syncText.textContent = message || config.text;
+        
+        if (config.animate) {
+            syncDot.classList.add('syncing');
+        } else {
+            syncDot.classList.remove('syncing');
+        }
+        
+        // Показываем/скрываем блок в зависимости от платформы
+        if (window.Telegram && window.Telegram.WebApp) {
+            syncInfo.style.display = 'block';
+        } else {
+            syncInfo.style.display = 'none';
         }
     }
 
@@ -265,6 +314,9 @@ class GameState {
         this.isSpinning = true;
         this.gamesPlayed++;
         
+        // Сохраняем старый баланс для отката при ошибке
+        const oldBalance = this.balance;
+        
         // Снимаем ставку
         this.balance -= this.currentBet;
         this.updateDisplay();
@@ -274,37 +326,53 @@ class GameState {
         spinBtn.disabled = true;
         spinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>...';
 
-        // Анимация вращения
-        await this.animateSpin();
-        
-        // Генерация результата
-        const result = this.generateResult();
-        this.displayResult(result);
-        
-        // Проверка выигрыша
-        const winResult = this.checkWin(result);
-        
-        if (winResult.winAmount > 0) {
-            // Выигрыш
-            this.balance += winResult.winAmount;
-            this.winsCount++;
-            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
-            this.showWin(winResult);
-            this.sendToTelegram('win', winResult.winAmount);
-        } else {
-            // Проигрыш
-            this.showMessage('😔 Нет выигрыша', 'lose');
-            this.sendToTelegram('loss', this.currentBet);
-        }
+        try {
+            // Обновляем статус синхронизации
+            if (window.Telegram && window.Telegram.WebApp) {
+                this.updateSyncStatus('syncing', 'Отправка данных боту...');
+            }
+            
+            // Анимация вращения
+            await this.animateSpin();
+            
+            // Генерация результата
+            const result = this.generateResult();
+            this.displayResult(result);
+            
+            // Проверка выигрыша
+            const winResult = this.checkWin(result);
+            
+            if (winResult.winAmount > 0) {
+                // Выигрыш
+                this.balance += winResult.winAmount;
+                this.winsCount++;
+                this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+                this.showWin(winResult);
+                
+                // Отправляем результат боту
+                await this.sendResultToBot(winResult.winAmount);
+            } else {
+                // Проигрыш
+                this.showMessage('😔 Нет выигрыша', 'lose');
+                await this.sendResultToBot(0);
+            }
 
-        // Разблокируем
-        this.isSpinning = false;
-        spinBtn.disabled = false;
-        spinBtn.innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
-        
-        // Сохраняем
-        this.saveToStorage();
-        this.updateDisplay();
+        } catch (error) {
+            console.error('Ошибка в игре:', error);
+            // Откатываем баланс при ошибке
+            this.balance = oldBalance;
+            this.showMessage('❌ Ошибка игры', 'error');
+            this.updateSyncStatus('error', 'Ошибка игры');
+        } finally {
+            // Разблокируем
+            this.isSpinning = false;
+            spinBtn.disabled = false;
+            spinBtn.innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
+            
+            // Сохраняем локально
+            this.saveToStorage();
+            this.updateDisplay();
+        }
     }
 
     async quickSpin() {
@@ -334,6 +402,9 @@ class GameState {
             this.winsCount++;
             this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
             this.showWin(winResult);
+            await this.sendResultToBot(winResult.winAmount);
+        } else {
+            await this.sendResultToBot(0);
         }
         
         this.isSpinning = false;
@@ -528,6 +599,68 @@ class GameState {
         return 0;
     }
 
+    async sendResultToBot(winAmount) {
+        if (!window.Telegram || !window.Telegram.WebApp) {
+            this.updateSyncStatus('offline', 'Офлайн режим');
+            return;
+        }
+        
+        try {
+            this.updateSyncStatus('syncing', 'Синхронизация...');
+            
+            const tg = window.Telegram.WebApp;
+            
+            // Генерируем подпись для безопасности
+            const signature = await this.generateSignature(this.userId, this.balance);
+            
+            const data = {
+                event: 'sync_balance',
+                user_id: this.userId,
+                balance: this.balance,
+                bet: this.currentBet,
+                win: winAmount,
+                result: winAmount > 0 ? 'win' : 'loss',
+                signature: signature,
+                timestamp: new Date().toISOString(),
+                game: 'slots_5x5',
+                platform: this.isMobile ? 'mobile' : 'desktop'
+            };
+            
+            // Отправляем данные боту
+            tg.sendData(JSON.stringify(data));
+            console.log('Данные отправлены боту:', data);
+            
+            this.updateSyncStatus('success', 'Баланс обновлен');
+            
+            // Через 3 секунды возвращаем в обычный статус
+            setTimeout(() => {
+                this.updateSyncStatus('ready');
+            }, 3000);
+            
+        } catch (error) {
+            this.updateSyncStatus('error', 'Ошибка синхронизации');
+            console.error('Ошибка отправки данных боту:', error);
+        }
+    }
+
+    async generateSignature(userId, balance) {
+        try {
+            // Используем SubtleCrypto если доступен
+            if (window.crypto && window.crypto.subtle) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(`${userId}:${balance}:${this.signature}`);
+                const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+        } catch (e) {
+            console.warn('SubtleCrypto не доступен, используем простую подпись');
+        }
+        
+        // Fallback для старых браузеров
+        return btoa(`${userId}:${balance}:${Date.now()}`).slice(0, 32);
+    }
+
     showWin(winResult) {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
@@ -563,6 +696,11 @@ class GameState {
         
         if (winResult.maxCount > 0) {
             winInfoElement.textContent = `${winResult.maxCount}× ${winResult.symbol?.emoji || ''}`;
+        }
+        
+        // Показываем статус синхронизации
+        if (window.Telegram && window.Telegram.WebApp) {
+            winInfoElement.innerHTML += '<br><small>🔄 Синхронизация с ботом...</small>';
         }
         
         // Анимация
@@ -625,25 +763,6 @@ class GameState {
         }
     }
 
-    sendToTelegram(event, amount) {
-        if (window.Telegram && window.Telegram.WebApp) {
-            const tg = window.Telegram.WebApp;
-            
-            const data = {
-                event: 'game_result',
-                user_id: this.userId,
-                bet: this.currentBet,
-                win: event === 'win' ? amount : 0,
-                result: event,
-                balance: this.balance,
-                timestamp: new Date().toISOString(),
-                platform: this.isMobile ? 'mobile' : 'desktop'
-            };
-            
-            tg.sendData(JSON.stringify(data));
-        }
-    }
-
     saveToStorage() {
         const data = {
             balance: this.balance,
@@ -651,7 +770,8 @@ class GameState {
             winsCount: this.winsCount,
             biggestWin: this.biggestWin,
             currentBet: this.currentBet,
-            lastPlayed: new Date().toISOString()
+            lastPlayed: new Date().toISOString(),
+            userId: this.userId
         };
         
         localStorage.setItem(`casino_5x5_${this.userId}`, JSON.stringify(data));
@@ -679,11 +799,30 @@ class GameState {
     }
 }
 
-// Инициализация при загрузке
+// Инициализация игры при загрузке
 let game;
 
 document.addEventListener('DOMContentLoaded', () => {
     game = new GameState();
+    
+    // Показываем информацию о пользователе
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id');
+    const balance = urlParams.get('balance');
+    
+    if (userId && balance) {
+        console.log(`Игра для пользователя ${userId}, начальный баланс: ${balance}₽`);
+        
+        // Можно показать приветствие
+        if (window.Telegram && window.Telegram.WebApp) {
+            const tg = window.Telegram.WebApp;
+            const user = tg.initDataUnsafe?.user;
+            if (user) {
+                const balanceEl = document.getElementById('balance');
+                balanceEl.innerHTML = `${balance} ₽<br><small>${user.first_name}</small>`;
+            }
+        }
+    }
     
     // Добавляем поддержку PWA
     if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
@@ -708,3 +847,20 @@ document.addEventListener('touchstart', (e) => {
 document.addEventListener('gesturestart', (e) => {
     e.preventDefault();
 });
+
+// Обработка сообщений от бота (если нужно)
+if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    
+    // Можно добавить обработку входящих сообщений от бота
+    tg.onEvent('viewportChanged', (event) => {
+        console.log('Viewport changed:', event);
+    });
+    
+    tg.onEvent('themeChanged', () => {
+        console.log('Theme changed');
+    });
+}
+
+// Экспортируем для отладки
+window.Game = GameState;

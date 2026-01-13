@@ -6,6 +6,54 @@
     <title>🎰 Slots 5×5</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Дополнительные стили для синхронизации */
+        .sync-info {
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 15px;
+            font-size: 12px;
+            color: #3498db;
+            text-align: center;
+            border: 1px solid rgba(52, 152, 219, 0.2);
+        }
+        
+        .sync-info p {
+            margin: 5px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .sync-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .sync-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #2ecc71;
+            display: inline-block;
+        }
+        
+        .sync-dot.syncing {
+            background: #f39c12;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -105,7 +153,17 @@
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Информация о синхронизации -->
+        <div class="sync-info" id="syncInfo">
+            <p><i class="fas fa-sync-alt"></i> Баланс синхронизируется с Telegram ботом</p>
+            <p><i class="fas fa-shield-alt"></i> Ваши данные защищены</p>
+            <div class="sync-status" id="syncStatus">
+                <span class="sync-dot" id="syncDot"></span>
+                <span id="syncText">Готов к синхронизации</span>
+            </div>
+        </div>
+    </div> <!-- Закрывающий тег основного контейнера -->
 
     <!-- Мобильное меню -->
     <div class="mobile-menu">

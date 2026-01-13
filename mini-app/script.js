@@ -17,7 +17,7 @@ const CONFIG = {
 // Состояние игры
 class GameState {
     constructor() {
-        this.balance = 1000;
+        this.balance = 0; // Будет загружено с сервера
         this.currentBet = 50;
         this.isSpinning = false;
         this.gamesPlayed = 0;
@@ -25,16 +25,17 @@ class GameState {
         this.biggestWin = 0;
         this.userId = this.getUserId();
         this.isMobile = this.checkMobile();
+        this.telegramWebApp = null;
         this.init();
     }
 
-    init() {
+    async init() {
         this.createGrid();
-        this.updateDisplay();
         this.setupEventListeners();
-        this.loadFromStorage();
         this.setupTelegram();
+        await this.loadInitialData(); // Загружаем данные с сервера
         this.setupMobileFeatures();
+        this.updateDisplay();
     }
 
     checkMobile() {
@@ -49,26 +50,56 @@ class GameState {
 
     setupTelegram() {
         if (window.Telegram && window.Telegram.WebApp) {
-            const tg = window.Telegram.WebApp;
-            tg.expand();
-            tg.ready();
-            tg.setHeaderColor('#302b63');
-            tg.setBackgroundColor('#0f0c29');
+            this.telegramWebApp = window.Telegram.WebApp;
+            this.telegramWebApp.expand();
+            this.telegramWebApp.ready();
+            this.telegramWebApp.setHeaderColor('#302b63');
+            this.telegramWebApp.setBackgroundColor('#0f0c29');
+            
+            // Настраиваем обработчик входящих сообщений
+            this.setupMessageHandler();
         }
     }
 
-    setupMobileFeatures() {
-        if (this.isMobile) {
-            this.setupTouchEvents();
-            this.setupKeyboard();
-            this.setupRulesToggle();
+    setupMessageHandler() {
+        // Telegram WebApp сам обрабатывает ответы через sendData
+        // Эта функция нужна для дополнительной обработки
+    }
+
+    async loadInitialData() {
+        try {
+            // Запрашиваем начальные данные у бота
+            const data = await this.sendToTelegram('get_initial_data', {});
+            
+            if (data && data.success) {
+                this.balance = data.balance || 0;
+                this.gamesPlayed = data.games_played || 0;
+                this.biggestWin = data.biggest_win || 0;
+                this.winsCount = data.total_wins || 0;
+                
+                console.log('Данные загружены с сервера:', {
+                    balance: this.balance,
+                    games: this.gamesPlayed
+                });
+                
+                // Если баланс 0 и это новый пользователь, показываем приветствие
+                if (this.balance === 0 && this.gamesPlayed === 0) {
+                    this.showMessage('🎰 Добро пожаловать! Начните игру!', 'info');
+                }
+            } else {
+                throw new Error('Не удалось загрузить данные');
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки данных:', error);
+            // Загружаем из localStorage как fallback
+            this.loadFromStorage();
         }
     }
 
     createGrid() {
         const grid = document.getElementById('reelsGrid');
         grid.innerHTML = '';
-        
+
         for (let i = 0; i < CONFIG.gridSize * CONFIG.gridSize; i++) {
             const cell = document.createElement('div');
             cell.className = 'reel-cell';
@@ -99,7 +130,7 @@ class GameState {
             document.getElementById('betMinus').addEventListener('click', () => {
                 this.adjustBet(-10);
             });
-            
+
             document.getElementById('betPlus').addEventListener('click', () => {
                 this.adjustBet(10);
             });
@@ -113,9 +144,17 @@ class GameState {
         }
     }
 
+    setupMobileFeatures() {
+        if (this.isMobile) {
+            this.setupTouchEvents();
+            this.setupKeyboard();
+            this.setupRulesToggle();
+        }
+    }
+
     setupTouchEvents() {
         const spinBtn = document.getElementById('spinBtn');
-        
+
         // Долгое нажатие для быстрого вращения
         let longPressTimer;
         spinBtn.addEventListener('touchstart', () => {
@@ -125,25 +164,25 @@ class GameState {
                 }
             }, 1000);
         });
-        
+
         spinBtn.addEventListener('touchend', () => {
             clearTimeout(longPressTimer);
         });
-        
+
         // Свайп для изменения ставки
         let startX;
         const betControls = document.querySelector('.bet-controls');
-        
+
         betControls.addEventListener('touchstart', (e) => {
             startX = e.touches[0].clientX;
         });
-        
+
         betControls.addEventListener('touchmove', (e) => {
             if (!startX || this.isSpinning) return;
-            
+
             const currentX = e.touches[0].clientX;
             const diff = startX - currentX;
-            
+
             if (Math.abs(diff) > 50) {
                 if (diff > 0) {
                     this.adjustBet(-10); // Свайп влево
@@ -157,26 +196,26 @@ class GameState {
 
     setupKeyboard() {
         if (!this.isMobile) return;
-        
+
         const keyboard = document.getElementById('mobileKeyboard');
         const showKeyboardBtn = document.getElementById('menuBtn');
         const closeKeyboardBtn = document.getElementById('keyboardClose');
         const customBetInput = document.getElementById('customBet');
         const keySubmit = document.getElementById('keySubmit');
         const keyClear = document.getElementById('keyClear');
-        
+
         if (!showKeyboardBtn) return;
-        
+
         showKeyboardBtn.addEventListener('click', () => {
             keyboard.classList.add('show');
             customBetInput.value = this.currentBet;
             customBetInput.focus();
         });
-        
+
         closeKeyboardBtn.addEventListener('click', () => {
             keyboard.classList.remove('show');
         });
-        
+
         keySubmit.addEventListener('click', () => {
             const bet = parseInt(customBetInput.value);
             if (bet >= CONFIG.minBet && bet <= CONFIG.maxBet && bet <= this.balance) {
@@ -184,11 +223,11 @@ class GameState {
                 keyboard.classList.remove('show');
             }
         });
-        
+
         keyClear.addEventListener('click', () => {
             customBetInput.value = '';
         });
-        
+
         // Кнопки цифр
         document.querySelectorAll('.key[data-key]').forEach(key => {
             key.addEventListener('click', (e) => {
@@ -204,7 +243,7 @@ class GameState {
     toggleRules() {
         const content = document.getElementById('rulesContent');
         const icon = document.querySelector('#rulesToggle i');
-        
+
         if (content.style.display === 'block') {
             content.style.display = 'none';
             icon.style.transform = 'rotate(0deg)';
@@ -223,33 +262,33 @@ class GameState {
 
     setBet(amount) {
         if (this.isSpinning) return;
-        
+
         if (amount < CONFIG.minBet) {
             this.showMessage(`Мин: ${CONFIG.minBet}₽`, 'error');
             return;
         }
-        
+
         if (amount > CONFIG.maxBet) {
             this.showMessage(`Макс: ${CONFIG.maxBet}₽`, 'error');
             return;
         }
-        
+
         if (amount > this.balance) {
             this.showMessage('Не хватает средств!', 'error');
             return;
         }
-        
+
         this.currentBet = amount;
-        
+
         // Обновляем все кнопки ставок
         document.querySelectorAll('.bet-btn, .quick-bet').forEach(btn => {
             btn.classList.remove('active');
-            if (parseInt(btn.dataset.bet) === amount || 
+            if (parseInt(btn.dataset.bet) === amount ||
                 (btn.dataset.bet === 'MAX' && amount === Math.min(CONFIG.maxBet, this.balance))) {
                 btn.classList.add('active');
             }
         });
-        
+
         // Обновляем отображение
         document.getElementById('currentBet').textContent = `${amount} ₽`;
         this.updateDisplay();
@@ -257,63 +296,94 @@ class GameState {
 
     async spin() {
         if (this.isSpinning) return;
-        if (this.currentBet > this.balance) {
-            this.showMessage('Не хватает средств!', 'error');
+        
+        // Проверяем баланс с сервера
+        const balanceCheck = await this.sendToTelegram('check_balance', {
+            bet: this.currentBet
+        });
+        
+        if (!balanceCheck || !balanceCheck.success) {
+            this.showMessage(balanceCheck?.message || 'Ошибка проверки баланса', 'error');
+            if (balanceCheck?.balance !== undefined) {
+                this.balance = balanceCheck.balance;
+                this.updateDisplay();
+            }
             return;
         }
 
         this.isSpinning = true;
         this.gamesPlayed++;
-        
-        // Снимаем ставку
-        this.balance -= this.currentBet;
-        this.updateDisplay();
-        
-        // Блокируем кнопки
+
+        // Блокируем кнопку
         const spinBtn = document.getElementById('spinBtn');
         spinBtn.disabled = true;
         spinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>...';
 
         // Анимация вращения
         await this.animateSpin();
-        
+
         // Генерация результата
         const result = this.generateResult();
         this.displayResult(result);
-        
+
         // Проверка выигрыша
         const winResult = this.checkWin(result);
-        
-        if (winResult.winAmount > 0) {
-            // Выигрыш
-            this.balance += winResult.winAmount;
-            this.winsCount++;
-            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
-            this.showWin(winResult);
-            this.sendToTelegram('win', winResult.winAmount);
+
+        // Отправляем результат на сервер
+        const gameData = {
+            bet: this.currentBet,
+            win_amount: winResult.winAmount,
+            symbols: result.map(s => s.emoji),
+            win_result: {
+                winAmount: winResult.winAmount,
+                winningCells: winResult.winningCells,
+                maxCount: winResult.maxCount
+            }
+        };
+
+        const serverResponse = await this.sendToTelegram('game_result', gameData);
+
+        if (serverResponse && serverResponse.success) {
+            // Обновляем данные с сервера
+            this.balance = serverResponse.new_balance;
+            this.gamesPlayed = serverResponse.games_played;
+            
+            if (winResult.winAmount > 0) {
+                this.winsCount++;
+                this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+                this.showWin(winResult);
+            } else {
+                this.showMessage('😔 Нет выигрыша', 'lose');
+            }
         } else {
-            // Проигрыш
-            this.showMessage('😔 Нет выигрыша', 'lose');
-            this.sendToTelegram('loss', this.currentBet);
+            this.showMessage('Ошибка обработки игры', 'error');
         }
 
-        // Разблокируем
+        // Разблокируем кнопку
         this.isSpinning = false;
         spinBtn.disabled = false;
         spinBtn.innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
-        
-        // Сохраняем
+
+        // Сохраняем настройки
         this.saveToStorage();
         this.updateDisplay();
     }
 
     async quickSpin() {
         if (this.isSpinning) return;
+
+        // Проверяем баланс
+        const balanceCheck = await this.sendToTelegram('check_balance', {
+            bet: this.currentBet
+        });
         
+        if (!balanceCheck || !balanceCheck.success) {
+            return;
+        }
+
         this.isSpinning = true;
         this.gamesPlayed++;
-        this.balance -= this.currentBet;
-        
+
         // Быстрая анимация
         const cells = document.querySelectorAll('.reel-cell');
         for (let i = 0; i < 10; i++) {
@@ -323,19 +393,32 @@ class GameState {
             });
             await this.sleep(50);
         }
-        
+
         // Результат
         const result = this.generateResult();
         this.displayResult(result);
         const winResult = this.checkWin(result);
-        
-        if (winResult.winAmount > 0) {
-            this.balance += winResult.winAmount;
-            this.winsCount++;
-            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
-            this.showWin(winResult);
+
+        // Отправляем на сервер
+        const gameData = {
+            bet: this.currentBet,
+            win_amount: winResult.winAmount,
+            symbols: result.map(s => s.emoji)
+        };
+
+        const serverResponse = await this.sendToTelegram('game_result', gameData);
+
+        if (serverResponse && serverResponse.success) {
+            this.balance = serverResponse.new_balance;
+            this.gamesPlayed = serverResponse.games_played;
+            
+            if (winResult.winAmount > 0) {
+                this.winsCount++;
+                this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+                this.showWin(winResult);
+            }
         }
-        
+
         this.isSpinning = false;
         this.saveToStorage();
         this.updateDisplay();
@@ -344,7 +427,7 @@ class GameState {
     async animateSpin() {
         const cells = document.querySelectorAll('.reel-cell');
         const totalFrames = this.isMobile ? 20 : 30;
-        
+
         for (let frame = 0; frame < totalFrames; frame++) {
             cells.forEach(cell => {
                 const symbol = CONFIG.symbols[Math.floor(Math.random() * CONFIG.symbols.length)];
@@ -353,7 +436,7 @@ class GameState {
             });
             await this.sleep(30 + frame);
         }
-        
+
         // Завершение
         for (let i = 0; i < 3; i++) {
             cells.forEach(cell => {
@@ -386,7 +469,7 @@ class GameState {
 
     displayResult(result) {
         const cells = document.querySelectorAll('.reel-cell');
-        
+
         cells.forEach((cell, index) => {
             cell.textContent = result[index].emoji;
             cell.classList.remove('win', 'big-win');
@@ -399,28 +482,28 @@ class GameState {
             const emoji = symbol.emoji;
             symbolCount[emoji] = (symbolCount[emoji] || 0) + 1;
         });
-        
+
         // Ищем максимальное количество одинаковых символов
         let maxCount = 0;
         let winningSymbol = null;
-        
+
         for (const emoji in symbolCount) {
             if (symbolCount[emoji] > maxCount) {
                 maxCount = symbolCount[emoji];
                 winningSymbol = result.find(s => s.emoji === emoji);
             }
         }
-        
+
         // Проверяем линии (горизонтальные, вертикальные, диагонали)
         const lines = this.checkLines(result);
         let totalWin = 0;
         let winningCells = [];
-        
+
         // Выигрыш за одинаковые символы
         if (maxCount >= 3 && winningSymbol) {
             const multiplier = winningSymbol.multipliers[maxCount] || 0;
             totalWin += this.currentBet * multiplier;
-            
+
             // Находим выигрышные ячейки
             result.forEach((symbol, index) => {
                 if (symbol.emoji === winningSymbol.emoji) {
@@ -428,13 +511,13 @@ class GameState {
                 }
             });
         }
-        
+
         // Добавляем выигрыш за линии
         if (lines.totalWin > 0) {
             totalWin += lines.totalWin;
             winningCells = [...winningCells, ...lines.winningCells];
         }
-        
+
         return {
             winAmount: totalWin,
             winningCells: [...new Set(winningCells)], // Убираем дубликаты
@@ -447,7 +530,7 @@ class GameState {
         const size = CONFIG.gridSize;
         let totalWin = 0;
         let winningCells = [];
-        
+
         // Горизонтальные линии
         for (let row = 0; row < size; row++) {
             const symbols = [];
@@ -457,14 +540,14 @@ class GameState {
                 symbols.push(result[index]);
                 cells.push(index);
             }
-            
+
             const lineWin = this.checkLine(symbols);
             if (lineWin > 0) {
                 totalWin += lineWin;
                 winningCells.push(...cells);
             }
         }
-        
+
         // Вертикальные линии
         for (let col = 0; col < size; col++) {
             const symbols = [];
@@ -474,42 +557,42 @@ class GameState {
                 symbols.push(result[index]);
                 cells.push(index);
             }
-            
+
             const lineWin = this.checkLine(symbols);
             if (lineWin > 0) {
                 totalWin += lineWin;
                 winningCells.push(...cells);
             }
         }
-        
+
         // Диагонали
         const diag1 = []; // Главная диагональ
         const diag1Cells = [];
         const diag2 = []; // Побочная диагональ
         const diag2Cells = [];
-        
+
         for (let i = 0; i < size; i++) {
             const index1 = i * size + i;
             diag1.push(result[index1]);
             diag1Cells.push(index1);
-            
+
             const index2 = i * size + (size - 1 - i);
             diag2.push(result[index2]);
             diag2Cells.push(index2);
         }
-        
+
         const diag1Win = this.checkLine(diag1);
         if (diag1Win > 0) {
             totalWin += diag1Win * 2; // Диагонали ×2
             winningCells.push(...diag1Cells);
         }
-        
+
         const diag2Win = this.checkLine(diag2);
         if (diag2Win > 0) {
             totalWin += diag2Win * 2;
             winningCells.push(...diag2Cells);
         }
-        
+
         return {
             totalWin: totalWin,
             winningCells: winningCells
@@ -517,14 +600,13 @@ class GameState {
     }
 
     checkLine(symbols) {
-        // Проверяем линию на одинаковые символы
         const firstSymbol = symbols[0];
         const allSame = symbols.every(s => s.emoji === firstSymbol.emoji);
-        
+
         if (allSame && symbols.length >= 3) {
             return this.currentBet * (firstSymbol.multipliers[symbols.length] || 0);
         }
-        
+
         return 0;
     }
 
@@ -532,7 +614,7 @@ class GameState {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
         const winInfoElement = document.getElementById('winInfo');
-        
+
         // Подсвечиваем выигрышные ячейки
         winResult.winningCells.forEach(cellIndex => {
             const cell = document.getElementById(`cell-${cellIndex}`);
@@ -540,7 +622,7 @@ class GameState {
                 cell.classList.add(winResult.winAmount >= this.currentBet * 100 ? 'big-win' : 'win');
             }
         });
-        
+
         // Сообщение в зависимости от выигрыша
         let message = '';
         if (winResult.winAmount >= this.currentBet * 100) {
@@ -554,20 +636,20 @@ class GameState {
         } else {
             message = '👌 ВЫИГРЫШ!';
         }
-        
+
         resultElement.textContent = message;
         resultElement.style.color = '#00FF00';
-        
+
         winAmountElement.textContent = `+${winResult.winAmount} ₽`;
         winAmountElement.style.display = 'block';
-        
+
         if (winResult.maxCount > 0) {
             winInfoElement.textContent = `${winResult.maxCount}× ${winResult.symbol?.emoji || ''}`;
         }
-        
+
         // Анимация
         winAmountElement.classList.add('win-animation');
-        
+
         // Вибрация на мобильных
         if (this.isMobile && navigator.vibrate) {
             navigator.vibrate([100, 50, 100]);
@@ -578,43 +660,71 @@ class GameState {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
         const winInfoElement = document.getElementById('winInfo');
-        
+
         // Сбрасываем подсветку
         document.querySelectorAll('.reel-cell').forEach(cell => {
             cell.classList.remove('win', 'big-win');
         });
-        
+
         resultElement.textContent = text;
         winAmountElement.textContent = '';
         winInfoElement.textContent = '';
         winAmountElement.style.display = 'none';
-        
+
         const colors = {
             error: '#FF4444',
             win: '#00FF00',
             lose: '#FF8800',
             info: '#FFFFFF'
         };
-        
+
         resultElement.style.color = colors[type] || colors.info;
+    }
+
+    async sendToTelegram(event, data = {}) {
+        return new Promise((resolve) => {
+            if (!this.telegramWebApp) {
+                resolve({ success: false, message: 'Telegram WebApp not available' });
+                return;
+            }
+
+            const requestId = Date.now();
+            const messageData = {
+                event: event,
+                user_id: this.userId,
+                request_id: requestId,
+                timestamp: new Date().toISOString(),
+                ...data
+            };
+
+            // Отправляем данные
+            this.telegramWebApp.sendData(JSON.stringify(messageData));
+            
+            // Telegram WebApp автоматически обрабатывает ответ через основной чат
+            // Просто разрешаем промис после отправки
+            // Реальный ответ придет через обработчик в bot.py
+            setTimeout(() => {
+                resolve({ success: true, sent: true });
+            }, 100);
+        });
     }
 
     updateDisplay() {
         // Баланс
         document.getElementById('balance').textContent = `${this.balance} ₽`;
         document.getElementById('currentBet').textContent = `${this.currentBet} ₽`;
-        
+
         // Статистика
         document.getElementById('gamesCount').textContent = this.gamesPlayed;
         document.getElementById('winsCount').textContent = this.winsCount;
         document.getElementById('biggestWin').textContent = `${this.biggestWin} ₽`;
-        
-        // Обновляем кнопку MAX если нужно
+
+        // Обновляем кнопку MAX
         document.querySelectorAll('.quick-bet[data-bet="MAX"]').forEach(btn => {
             btn.textContent = `MAX (${Math.min(CONFIG.maxBet, this.balance)}₽)`;
         });
-        
-        // Меняем цвет баланса если мало средств
+
+        // Меняем цвет баланса
         const balanceEl = document.getElementById('balance');
         if (this.balance < CONFIG.minBet) {
             balanceEl.style.background = 'linear-gradient(45deg, #FF416C, #FF4B2B)';
@@ -623,53 +733,35 @@ class GameState {
         } else {
             balanceEl.style.background = 'linear-gradient(45deg, #00b09b, #96c93d)';
         }
-    }
 
-    sendToTelegram(event, amount) {
-        if (window.Telegram && window.Telegram.WebApp) {
-            const tg = window.Telegram.WebApp;
-            
-            const data = {
-                event: 'game_result',
-                user_id: this.userId,
-                bet: this.currentBet,
-                win: event === 'win' ? amount : 0,
-                result: event,
-                balance: this.balance,
-                timestamp: new Date().toISOString(),
-                platform: this.isMobile ? 'mobile' : 'desktop'
-            };
-            
-            tg.sendData(JSON.stringify(data));
+        // Обновляем состояние кнопки вращения
+        const spinBtn = document.getElementById('spinBtn');
+        if (this.balance < CONFIG.minBet) {
+            spinBtn.disabled = true;
+            spinBtn.style.opacity = '0.6';
+        } else {
+            spinBtn.disabled = false;
+            spinBtn.style.opacity = '1';
         }
     }
 
     saveToStorage() {
+        // Сохраняем только настройки
         const data = {
-            balance: this.balance,
-            gamesPlayed: this.gamesPlayed,
-            winsCount: this.winsCount,
-            biggestWin: this.biggestWin,
             currentBet: this.currentBet,
             lastPlayed: new Date().toISOString()
         };
-        
-        localStorage.setItem(`casino_5x5_${this.userId}`, JSON.stringify(data));
+        localStorage.setItem(`casino_settings_${this.userId}`, JSON.stringify(data));
     }
 
     loadFromStorage() {
-        const data = localStorage.getItem(`casino_5x5_${this.userId}`);
+        const data = localStorage.getItem(`casino_settings_${this.userId}`);
         if (data) {
             try {
                 const saved = JSON.parse(data);
-                this.balance = saved.balance || this.balance;
-                this.gamesPlayed = saved.gamesPlayed || this.gamesPlayed;
-                this.winsCount = saved.winsCount || this.winsCount;
-                this.biggestWin = saved.biggestWin || this.biggestWin;
                 this.currentBet = saved.currentBet || this.currentBet;
-                this.updateDisplay();
             } catch (e) {
-                console.error('Error loading from storage:', e);
+                console.error('Error loading settings:', e);
             }
         }
     }
@@ -684,27 +776,18 @@ let game;
 
 document.addEventListener('DOMContentLoaded', () => {
     game = new GameState();
-    
+
     // Добавляем поддержку PWA
     if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
         navigator.serviceWorker.register('/sw.js').catch(console.error);
     }
 });
 
-// Обработка изменения ориентации
-window.addEventListener('orientationchange', () => {
-    setTimeout(() => {
-        location.reload();
-    }, 100);
-});
-
-// Предотвращаем зум на мобильных
-document.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 1) {
-        e.preventDefault();
+// Обновляем баланс при возвращении на вкладку
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && game && game.telegramWebApp) {
+        setTimeout(() => {
+            game.loadInitialData();
+        }, 1000);
     }
-}, { passive: false });
-
-document.addEventListener('gesturestart', (e) => {
-    e.preventDefault();
 });

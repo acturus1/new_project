@@ -1,78 +1,45 @@
-// Конфигурация игры 5x3
+// Конфигурация игры 5×5
 const CONFIG = {
     symbols: [
-        { emoji: "🍒", weight: 25, multipliers: {3: 3, 4: 5, 5: 10} },
-        { emoji: "🍋", weight: 20, multipliers: {3: 3, 4: 5, 5: 8} },
-        { emoji: "🍊", weight: 18, multipliers: {3: 3, 4: 5, 5: 8} },
-        { emoji: "🍇", weight: 15, multipliers: {3: 5, 4: 8, 5: 12} },
-        { emoji: "🔔", weight: 10, multipliers: {3: 8, 4: 12, 5: 20} },
-        { emoji: "⭐", weight: 5, multipliers: {3: 10, 4: 20, 5: 50} },
-        { emoji: "7️⃣", weight: 3, multipliers: {3: 20, 4: 50, 5: 100} },
-        { emoji: "🃏", weight: 4, multipliers: {3: 2, 4: 3, 5: 5}, isWild: true }
+        { emoji: "🍒", weight: 25, multipliers: {3: 5, 4: 20, 5: 100} },
+        { emoji: "🍋", weight: 22, multipliers: {3: 5, 4: 20, 5: 100} },
+        { emoji: "🍊", weight: 20, multipliers: {3: 5, 4: 20, 5: 100} },
+        { emoji: "🍇", weight: 15, multipliers: {3: 8, 4: 30, 5: 150} },
+        { emoji: "🔔", weight: 10, multipliers: {3: 10, 4: 40, 5: 200} },
+        { emoji: "⭐", weight: 5, multipliers: {3: 15, 4: 60, 5: 300} },
+        { emoji: "7️⃣", weight: 3, multipliers: {3: 20, 4: 80, 5: 500} }
     ],
-    minBet: 1,
-    maxBet: 50,
-    lines: 20,
-    reels: 5,
-    rows: 3
+    minBet: 10,
+    maxBet: 500,
+    gridSize: 5
 };
-
-// Линии выигрыша для 5x3 (20 линий)
-const PAYLINES = [
-    // Горизонтальные линии
-    [[0,0], [1,0], [2,0], [3,0], [4,0]], // Линия 1: верхний ряд
-    [[0,1], [1,1], [2,1], [3,1], [4,1]], // Линия 2: средний ряд
-    [[0,2], [1,2], [2,2], [3,2], [4,2]], // Линия 3: нижний ряд
-    
-    // V-образные линии
-    [[0,0], [1,1], [2,2], [3,1], [4,0]], // Линия 4: V сверху
-    [[0,2], [1,1], [2,0], [3,1], [4,2]], // Линия 5: V снизу
-    
-    // /\-образные линии
-    [[0,1], [1,0], [2,0], [3,0], [4,1]], // Линия 6
-    [[0,1], [1,2], [2,2], [3,2], [4,1]], // Линия 7
-    
-    // Зигзаги
-    [[0,0], [1,0], [2,1], [3,2], [4,2]], // Линия 8
-    [[0,2], [1,2], [2,1], [3,0], [4,0]], // Линия 9
-    [[0,0], [1,1], [2,1], [3,1], [4,0]], // Линия 10
-    [[0,2], [1,1], [2,1], [3,1], [4,2]], // Линия 11
-    
-    // Ступеньки
-    [[0,0], [1,1], [2,0], [3,1], [4,0]], // Линия 12
-    [[0,2], [1,1], [2,2], [3,1], [4,2]], // Линия 13
-    [[0,1], [1,0], [2,1], [3,0], [4,1]], // Линия 14
-    [[0,1], [1,2], [2,1], [3,2], [4,1]], // Линия 15
-    
-    // Угловые
-    [[0,0], [1,0], [2,1], [3,2], [4,2]], // Линия 16
-    [[0,2], [1,2], [2,1], [3,0], [4,0]], // Линия 17
-    [[0,0], [1,1], [2,2], [3,2], [4,2]], // Линия 18
-    [[0,2], [1,1], [2,0], [3,0], [4,0]], // Линия 19
-    [[0,0], [0,1], [0,2], [1,1], [2,0]]  // Линия 20
-];
 
 // Состояние игры
 class GameState {
     constructor() {
         this.balance = 1000;
-        this.currentBetPerLine = 10;
+        this.currentBet = 50;
         this.isSpinning = false;
         this.gamesPlayed = 0;
         this.winsCount = 0;
         this.biggestWin = 0;
         this.userId = this.getUserId();
-        this.activeLines = CONFIG.lines;
+        this.isMobile = this.checkMobile();
         this.init();
     }
 
     init() {
-        this.createReelsGrid();
-        this.createPaylinesDisplay();
+        this.createGrid();
         this.updateDisplay();
         this.setupEventListeners();
         this.loadFromStorage();
         this.setupTelegram();
+        this.setupMobileFeatures();
+    }
+
+    checkMobile() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+               window.innerWidth <= 768;
     }
 
     getUserId() {
@@ -85,164 +52,318 @@ class GameState {
             const tg = window.Telegram.WebApp;
             tg.expand();
             tg.ready();
-            console.log('Telegram WebApp initialized');
+            tg.setHeaderColor('#302b63');
+            tg.setBackgroundColor('#0f0c29');
         }
     }
 
-    createReelsGrid() {
+    setupMobileFeatures() {
+        if (this.isMobile) {
+            this.setupTouchEvents();
+            this.setupKeyboard();
+            this.setupRulesToggle();
+        }
+    }
+
+    createGrid() {
         const grid = document.getElementById('reelsGrid');
         grid.innerHTML = '';
         
-        // Создаем сетку 3 ряда × 5 колонок
-        for (let row = 0; row < CONFIG.rows; row++) {
-            for (let col = 0; col < CONFIG.reels; col++) {
-                const cell = document.createElement('div');
-                cell.className = 'reel-cell';
-                cell.id = `reel-${col}-${row}`;
-                cell.textContent = '?';
-                grid.appendChild(cell);
-            }
+        for (let i = 0; i < CONFIG.gridSize * CONFIG.gridSize; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'reel-cell';
+            cell.id = `cell-${i}`;
+            cell.textContent = '?';
+            grid.appendChild(cell);
         }
-    }
-
-    createPaylinesDisplay() {
-        const grid = document.getElementById('paylinesGrid');
-        grid.innerHTML = '';
-        
-        for (let i = 0; i < CONFIG.lines; i++) {
-            const btn = document.createElement('button');
-            btn.className = 'payline-btn active';
-            btn.textContent = `L${i + 1}`;
-            btn.dataset.line = i;
-            btn.addEventListener('click', (e) => {
-                this.toggleLine(parseInt(e.target.dataset.line));
-            });
-            grid.appendChild(btn);
-        }
-    }
-
-    toggleLine(lineIndex) {
-        const btn = document.querySelector(`.payline-btn[data-line="${lineIndex}"]`);
-        btn.classList.toggle('active');
-        this.activeLines = document.querySelectorAll('.payline-btn.active').length;
-        this.updateDisplay();
     }
 
     setupEventListeners() {
-        document.querySelectorAll('.bet-btn').forEach(btn => {
+        // Кнопки ставок
+        document.querySelectorAll('.bet-btn, .quick-bet').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 if (this.isSpinning) return;
-                const bet = parseInt(e.target.dataset.bet);
-                this.setBet(bet);
+                let bet = e.target.dataset.bet;
+                if (bet === 'MAX') bet = Math.min(CONFIG.maxBet, this.balance);
+                this.setBet(parseInt(bet));
             });
         });
 
+        // Кнопка вращения
         document.getElementById('spinBtn').addEventListener('click', () => {
             this.spin();
         });
 
-        document.getElementById('refreshBalance').addEventListener('click', () => {
-            this.fetchUserData();
+        // Мобильные кнопки +/-
+        if (this.isMobile) {
+            document.getElementById('betMinus').addEventListener('click', () => {
+                this.adjustBet(-10);
+            });
+            
+            document.getElementById('betPlus').addEventListener('click', () => {
+                this.adjustBet(10);
+            });
+        }
+
+        // Показ/скрытие правил
+        if (this.isMobile && document.getElementById('rulesToggle')) {
+            document.getElementById('rulesToggle').addEventListener('click', () => {
+                this.toggleRules();
+            });
+        }
+    }
+
+    setupTouchEvents() {
+        const spinBtn = document.getElementById('spinBtn');
+        
+        // Долгое нажатие для быстрого вращения
+        let longPressTimer;
+        spinBtn.addEventListener('touchstart', () => {
+            longPressTimer = setTimeout(() => {
+                if (!this.isSpinning && this.currentBet <= this.balance) {
+                    this.quickSpin();
+                }
+            }, 1000);
         });
+        
+        spinBtn.addEventListener('touchend', () => {
+            clearTimeout(longPressTimer);
+        });
+        
+        // Свайп для изменения ставки
+        let startX;
+        const betControls = document.querySelector('.bet-controls');
+        
+        betControls.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+        });
+        
+        betControls.addEventListener('touchmove', (e) => {
+            if (!startX || this.isSpinning) return;
+            
+            const currentX = e.touches[0].clientX;
+            const diff = startX - currentX;
+            
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) {
+                    this.adjustBet(-10); // Свайп влево
+                } else {
+                    this.adjustBet(10); // Свайп вправо
+                }
+                startX = currentX;
+            }
+        });
+    }
+
+    setupKeyboard() {
+        if (!this.isMobile) return;
+        
+        const keyboard = document.getElementById('mobileKeyboard');
+        const showKeyboardBtn = document.getElementById('menuBtn');
+        const closeKeyboardBtn = document.getElementById('keyboardClose');
+        const customBetInput = document.getElementById('customBet');
+        const keySubmit = document.getElementById('keySubmit');
+        const keyClear = document.getElementById('keyClear');
+        
+        if (!showKeyboardBtn) return;
+        
+        showKeyboardBtn.addEventListener('click', () => {
+            keyboard.classList.add('show');
+            customBetInput.value = this.currentBet;
+            customBetInput.focus();
+        });
+        
+        closeKeyboardBtn.addEventListener('click', () => {
+            keyboard.classList.remove('show');
+        });
+        
+        keySubmit.addEventListener('click', () => {
+            const bet = parseInt(customBetInput.value);
+            if (bet >= CONFIG.minBet && bet <= CONFIG.maxBet && bet <= this.balance) {
+                this.setBet(bet);
+                keyboard.classList.remove('show');
+            }
+        });
+        
+        keyClear.addEventListener('click', () => {
+            customBetInput.value = '';
+        });
+        
+        // Кнопки цифр
+        document.querySelectorAll('.key[data-key]').forEach(key => {
+            key.addEventListener('click', (e) => {
+                const value = e.target.dataset.key;
+                customBetInput.value += value;
+                if (parseInt(customBetInput.value) > CONFIG.maxBet) {
+                    customBetInput.value = CONFIG.maxBet;
+                }
+            });
+        });
+    }
+
+    toggleRules() {
+        const content = document.getElementById('rulesContent');
+        const icon = document.querySelector('#rulesToggle i');
+        
+        if (content.style.display === 'block') {
+            content.style.display = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            content.style.display = 'block';
+            icon.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    adjustBet(amount) {
+        const newBet = this.currentBet + amount;
+        if (newBet >= CONFIG.minBet && newBet <= CONFIG.maxBet && newBet <= this.balance) {
+            this.setBet(newBet);
+        }
     }
 
     setBet(amount) {
         if (this.isSpinning) return;
         
         if (amount < CONFIG.minBet) {
-            this.showMessage(`Минимальная ставка: ${CONFIG.minBet}₽`, 'error');
+            this.showMessage(`Мин: ${CONFIG.minBet}₽`, 'error');
             return;
         }
         
         if (amount > CONFIG.maxBet) {
-            this.showMessage(`Максимальная ставка: ${CONFIG.maxBet}₽`, 'error');
+            this.showMessage(`Макс: ${CONFIG.maxBet}₽`, 'error');
             return;
         }
         
-        const totalBet = amount * this.activeLines;
-        if (totalBet > this.balance) {
-            this.showMessage('Недостаточно средств!', 'error');
+        if (amount > this.balance) {
+            this.showMessage('Не хватает средств!', 'error');
             return;
         }
         
-        this.currentBetPerLine = amount;
+        this.currentBet = amount;
         
-        document.querySelectorAll('.bet-btn').forEach(btn => {
+        // Обновляем все кнопки ставок
+        document.querySelectorAll('.bet-btn, .quick-bet').forEach(btn => {
             btn.classList.remove('active');
-            if (parseInt(btn.dataset.bet) === amount) {
+            if (parseInt(btn.dataset.bet) === amount || 
+                (btn.dataset.bet === 'MAX' && amount === Math.min(CONFIG.maxBet, this.balance))) {
                 btn.classList.add('active');
             }
         });
         
+        // Обновляем отображение
+        document.getElementById('currentBet').textContent = `${amount} ₽`;
         this.updateDisplay();
     }
 
     async spin() {
         if (this.isSpinning) return;
-        
-        const totalBet = this.currentBetPerLine * this.activeLines;
-        if (totalBet > this.balance) {
-            this.showMessage('Недостаточно средств!', 'error');
+        if (this.currentBet > this.balance) {
+            this.showMessage('Не хватает средств!', 'error');
             return;
         }
 
         this.isSpinning = true;
         this.gamesPlayed++;
         
-        this.balance -= totalBet;
+        // Снимаем ставку
+        this.balance -= this.currentBet;
         this.updateDisplay();
         
-        document.getElementById('spinBtn').disabled = true;
-        document.getElementById('spinBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> КРУТИТСЯ...';
+        // Блокируем кнопки
+        const spinBtn = document.getElementById('spinBtn');
+        spinBtn.disabled = true;
+        spinBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>...';
 
+        // Анимация вращения
         await this.animateSpin();
         
+        // Генерация результата
         const result = this.generateResult();
         this.displayResult(result);
         
-        const winResult = this.checkAllLines(result);
+        // Проверка выигрыша
+        const winResult = this.checkWin(result);
         
-        if (winResult.totalWin > 0) {
-            this.balance += winResult.totalWin;
+        if (winResult.winAmount > 0) {
+            // Выигрыш
+            this.balance += winResult.winAmount;
             this.winsCount++;
-            this.biggestWin = Math.max(this.biggestWin, winResult.totalWin);
+            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
             this.showWin(winResult);
-            this.sendToTelegram('win', winResult.totalWin);
+            this.sendToTelegram('win', winResult.winAmount);
         } else {
+            // Проигрыш
             this.showMessage('😔 Нет выигрыша', 'lose');
-            this.sendToTelegram('loss', totalBet);
+            this.sendToTelegram('loss', this.currentBet);
         }
 
+        // Разблокируем
         this.isSpinning = false;
-        document.getElementById('spinBtn').disabled = false;
-        document.getElementById('spinBtn').innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
+        spinBtn.disabled = false;
+        spinBtn.innerHTML = '<i class="fas fa-play"></i> КРУТИТЬ!';
         
+        // Сохраняем
+        this.saveToStorage();
+        this.updateDisplay();
+    }
+
+    async quickSpin() {
+        if (this.isSpinning) return;
+        
+        this.isSpinning = true;
+        this.gamesPlayed++;
+        this.balance -= this.currentBet;
+        
+        // Быстрая анимация
+        const cells = document.querySelectorAll('.reel-cell');
+        for (let i = 0; i < 10; i++) {
+            cells.forEach(cell => {
+                const symbol = CONFIG.symbols[Math.floor(Math.random() * CONFIG.symbols.length)];
+                cell.textContent = symbol.emoji;
+            });
+            await this.sleep(50);
+        }
+        
+        // Результат
+        const result = this.generateResult();
+        this.displayResult(result);
+        const winResult = this.checkWin(result);
+        
+        if (winResult.winAmount > 0) {
+            this.balance += winResult.winAmount;
+            this.winsCount++;
+            this.biggestWin = Math.max(this.biggestWin, winResult.winAmount);
+            this.showWin(winResult);
+        }
+        
+        this.isSpinning = false;
         this.saveToStorage();
         this.updateDisplay();
     }
 
     async animateSpin() {
         const cells = document.querySelectorAll('.reel-cell');
-        const symbols = CONFIG.symbols;
+        const totalFrames = this.isMobile ? 20 : 30;
         
-        for (let i = 0; i < 30; i++) {
+        for (let frame = 0; frame < totalFrames; frame++) {
             cells.forEach(cell => {
-                const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
-                cell.textContent = randomSymbol.emoji;
-                cell.style.transform = `scale(${1 + Math.random() * 0.2})`;
+                const symbol = CONFIG.symbols[Math.floor(Math.random() * CONFIG.symbols.length)];
+                cell.textContent = symbol.emoji;
+                cell.style.transform = `scale(${1 + Math.random() * 0.1})`;
             });
-            await this.sleep(50 + i * 2);
+            await this.sleep(30 + frame);
         }
         
+        // Завершение
         for (let i = 0; i < 3; i++) {
             cells.forEach(cell => {
-                cell.style.transform = 'scale(1.1)';
+                cell.style.transform = 'scale(1.05)';
             });
-            await this.sleep(100);
+            await this.sleep(80);
             cells.forEach(cell => {
                 cell.style.transform = 'scale(1)';
             });
-            await this.sleep(100);
+            await this.sleep(80);
         }
     }
 
@@ -255,11 +376,9 @@ class GameState {
         });
 
         const result = [];
-        for (let row = 0; row < CONFIG.rows; row++) {
-            for (let col = 0; col < CONFIG.reels; col++) {
-                const randomIndex = Math.floor(Math.random() * weightedSymbols.length);
-                result.push(weightedSymbols[randomIndex]);
-            }
+        for (let i = 0; i < CONFIG.gridSize * CONFIG.gridSize; i++) {
+            const randomIndex = Math.floor(Math.random() * weightedSymbols.length);
+            result.push(weightedSymbols[randomIndex]);
         }
 
         return result;
@@ -270,70 +389,140 @@ class GameState {
         
         cells.forEach((cell, index) => {
             cell.textContent = result[index].emoji;
-            cell.classList.remove('win', 'wild');
-            
-            if (result[index].isWild) {
-                cell.classList.add('wild');
-            }
+            cell.classList.remove('win', 'big-win');
         });
     }
 
-    checkAllLines(result) {
-        const winningLines = [];
-        let totalWin = 0;
-        
-        PAYLINES.forEach((line, lineIndex) => {
-            const lineSymbols = [];
-            let hasWild = false;
-            
-            line.forEach(([col, row]) => {
-                const index = row * CONFIG.reels + col;
-                lineSymbols.push(result[index]);
-                if (result[index].isWild) {
-                    hasWild = true;
-                }
-            });
-            
-            const win = this.checkLine(lineSymbols, hasWild);
-            if (win > 0) {
-                winningLines.push({
-                    line: lineIndex + 1,
-                    win: win,
-                    symbols: lineSymbols
-                });
-                totalWin += win;
-            }
+    checkWin(result) {
+        const symbolCount = {};
+        result.forEach(symbol => {
+            const emoji = symbol.emoji;
+            symbolCount[emoji] = (symbolCount[emoji] || 0) + 1;
         });
         
-        return {
-            winningLines: winningLines,
-            totalWin: totalWin
-        };
-    }
-
-    checkLine(symbols, hasWild) {
-        let mainSymbol = null;
-        let count = 0;
+        // Ищем максимальное количество одинаковых символов
+        let maxCount = 0;
+        let winningSymbol = null;
         
-        for (let i = 0; i < symbols.length; i++) {
-            if (symbols[i].isWild) {
-                count++;
-                continue;
-            }
-            
-            if (!mainSymbol) {
-                mainSymbol = symbols[i];
-                count++;
-            } else if (symbols[i].emoji === mainSymbol.emoji) {
-                count++;
-            } else {
-                break;
+        for (const emoji in symbolCount) {
+            if (symbolCount[emoji] > maxCount) {
+                maxCount = symbolCount[emoji];
+                winningSymbol = result.find(s => s.emoji === emoji);
             }
         }
         
-        if (count >= 3 && mainSymbol) {
-            const multiplier = mainSymbol.multipliers[count] || 0;
-            return this.currentBetPerLine * multiplier;
+        // Проверяем линии (горизонтальные, вертикальные, диагонали)
+        const lines = this.checkLines(result);
+        let totalWin = 0;
+        let winningCells = [];
+        
+        // Выигрыш за одинаковые символы
+        if (maxCount >= 3 && winningSymbol) {
+            const multiplier = winningSymbol.multipliers[maxCount] || 0;
+            totalWin += this.currentBet * multiplier;
+            
+            // Находим выигрышные ячейки
+            result.forEach((symbol, index) => {
+                if (symbol.emoji === winningSymbol.emoji) {
+                    winningCells.push(index);
+                }
+            });
+        }
+        
+        // Добавляем выигрыш за линии
+        if (lines.totalWin > 0) {
+            totalWin += lines.totalWin;
+            winningCells = [...winningCells, ...lines.winningCells];
+        }
+        
+        return {
+            winAmount: totalWin,
+            winningCells: [...new Set(winningCells)], // Убираем дубликаты
+            maxCount: maxCount,
+            symbol: winningSymbol
+        };
+    }
+
+    checkLines(result) {
+        const size = CONFIG.gridSize;
+        let totalWin = 0;
+        let winningCells = [];
+        
+        // Горизонтальные линии
+        for (let row = 0; row < size; row++) {
+            const symbols = [];
+            const cells = [];
+            for (let col = 0; col < size; col++) {
+                const index = row * size + col;
+                symbols.push(result[index]);
+                cells.push(index);
+            }
+            
+            const lineWin = this.checkLine(symbols);
+            if (lineWin > 0) {
+                totalWin += lineWin;
+                winningCells.push(...cells);
+            }
+        }
+        
+        // Вертикальные линии
+        for (let col = 0; col < size; col++) {
+            const symbols = [];
+            const cells = [];
+            for (let row = 0; row < size; row++) {
+                const index = row * size + col;
+                symbols.push(result[index]);
+                cells.push(index);
+            }
+            
+            const lineWin = this.checkLine(symbols);
+            if (lineWin > 0) {
+                totalWin += lineWin;
+                winningCells.push(...cells);
+            }
+        }
+        
+        // Диагонали
+        const diag1 = []; // Главная диагональ
+        const diag1Cells = [];
+        const diag2 = []; // Побочная диагональ
+        const diag2Cells = [];
+        
+        for (let i = 0; i < size; i++) {
+            const index1 = i * size + i;
+            diag1.push(result[index1]);
+            diag1Cells.push(index1);
+            
+            const index2 = i * size + (size - 1 - i);
+            diag2.push(result[index2]);
+            diag2Cells.push(index2);
+        }
+        
+        const diag1Win = this.checkLine(diag1);
+        if (diag1Win > 0) {
+            totalWin += diag1Win * 2; // Диагонали ×2
+            winningCells.push(...diag1Cells);
+        }
+        
+        const diag2Win = this.checkLine(diag2);
+        if (diag2Win > 0) {
+            totalWin += diag2Win * 2;
+            winningCells.push(...diag2Cells);
+        }
+        
+        return {
+            totalWin: totalWin,
+            winningCells: winningCells
+        };
+    }
+
+    checkLine(symbols) {
+        // Проверяем линию на одинаковые символы
+        const firstSymbol = symbols[0];
+        const allSame = symbols.every(s => s.emoji === firstSymbol.emoji);
+        
+        if (allSame && symbols.length >= 3) {
+            return this.currentBet * (firstSymbol.multipliers[symbols.length] || 0);
         }
         
         return 0;
@@ -342,71 +531,98 @@ class GameState {
     showWin(winResult) {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
-        const winLinesElement = document.getElementById('winLines');
+        const winInfoElement = document.getElementById('winInfo');
         
-        winResult.winningLines.forEach(winLine => {
-            PAYLINES[winLine.line - 1].forEach(([col, row]) => {
-                const cell = document.getElementById(`reel-${col}-${row}`);
-                cell.classList.add('win');
-            });
+        // Подсвечиваем выигрышные ячейки
+        winResult.winningCells.forEach(cellIndex => {
+            const cell = document.getElementById(`cell-${cellIndex}`);
+            if (cell) {
+                cell.classList.add(winResult.winAmount >= this.currentBet * 100 ? 'big-win' : 'win');
+            }
         });
         
-        resultElement.textContent = `🎉 ВЫИГРЫШ ПО ${winResult.winningLines.length} ЛИНИЯМ!`;
-        resultElement.style.color = '#00FF00';
-        
-        winAmountElement.textContent = `+${winResult.totalWin} ₽`;
-        winAmountElement.style.display = 'block';
-        
-        if (winResult.winningLines.length > 0) {
-            winLinesElement.textContent = `Линии: ${winResult.winningLines.map(w => w.line).join(', ')}`;
+        // Сообщение в зависимости от выигрыша
+        let message = '';
+        if (winResult.winAmount >= this.currentBet * 100) {
+            message = '🎉 МЕГА ДЖЕКПОТ!';
+        } else if (winResult.winAmount >= this.currentBet * 50) {
+            message = '🌟 СУПЕР ВЫИГРЫШ!';
+        } else if (winResult.winAmount >= this.currentBet * 20) {
+            message = '✨ БОЛЬШОЙ ВЫИГРЫШ!';
+        } else if (winResult.winAmount >= this.currentBet * 10) {
+            message = '👍 ХОРОШИЙ ВЫИГРЫШ!';
+        } else {
+            message = '👌 ВЫИГРЫШ!';
         }
         
+        resultElement.textContent = message;
+        resultElement.style.color = '#00FF00';
+        
+        winAmountElement.textContent = `+${winResult.winAmount} ₽`;
+        winAmountElement.style.display = 'block';
+        
+        if (winResult.maxCount > 0) {
+            winInfoElement.textContent = `${winResult.maxCount}× ${winResult.symbol?.emoji || ''}`;
+        }
+        
+        // Анимация
         winAmountElement.classList.add('win-animation');
-        setTimeout(() => {
-            winAmountElement.classList.remove('win-animation');
-        }, 1500);
+        
+        // Вибрация на мобильных
+        if (this.isMobile && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+        }
     }
 
     showMessage(text, type = 'info') {
         const resultElement = document.getElementById('result');
         const winAmountElement = document.getElementById('winAmount');
-        const winLinesElement = document.getElementById('winLines');
+        const winInfoElement = document.getElementById('winInfo');
+        
+        // Сбрасываем подсветку
+        document.querySelectorAll('.reel-cell').forEach(cell => {
+            cell.classList.remove('win', 'big-win');
+        });
         
         resultElement.textContent = text;
         winAmountElement.textContent = '';
-        winLinesElement.textContent = '';
+        winInfoElement.textContent = '';
         winAmountElement.style.display = 'none';
         
-        if (type === 'error') {
-            resultElement.style.color = '#FF4444';
-        } else if (type === 'win') {
-            resultElement.style.color = '#00FF00';
-        } else if (type === 'lose') {
-            resultElement.style.color = '#FF8800';
-        } else {
-            resultElement.style.color = '#FFFFFF';
-        }
+        const colors = {
+            error: '#FF4444',
+            win: '#00FF00',
+            lose: '#FF8800',
+            info: '#FFFFFF'
+        };
+        
+        resultElement.style.color = colors[type] || colors.info;
     }
 
     updateDisplay() {
-        const totalBet = this.currentBetPerLine * this.activeLines;
-        
+        // Баланс
         document.getElementById('balance').textContent = `${this.balance} ₽`;
-        document.getElementById('totalBet').textContent = `${totalBet} ₽`;
-        document.getElementById('activeLines').textContent = this.activeLines;
-        document.getElementById('winningLines').textContent = '0';
-        document.getElementById('totalMultiplier').textContent = '0x';
+        document.getElementById('currentBet').textContent = `${this.currentBet} ₽`;
         
-        document.getElementById('gamesPlayed').textContent = this.gamesPlayed;
+        // Статистика
+        document.getElementById('gamesCount').textContent = this.gamesPlayed;
         document.getElementById('winsCount').textContent = this.winsCount;
         document.getElementById('biggestWin').textContent = `${this.biggestWin} ₽`;
         
-        document.querySelectorAll('.bet-btn').forEach(btn => {
-            btn.classList.remove('active');
-            if (parseInt(btn.dataset.bet) === this.currentBetPerLine) {
-                btn.classList.add('active');
-            }
+        // Обновляем кнопку MAX если нужно
+        document.querySelectorAll('.quick-bet[data-bet="MAX"]').forEach(btn => {
+            btn.textContent = `MAX (${Math.min(CONFIG.maxBet, this.balance)}₽)`;
         });
+        
+        // Меняем цвет баланса если мало средств
+        const balanceEl = document.getElementById('balance');
+        if (this.balance < CONFIG.minBet) {
+            balanceEl.style.background = 'linear-gradient(45deg, #FF416C, #FF4B2B)';
+        } else if (this.balance < 100) {
+            balanceEl.style.background = 'linear-gradient(45deg, #FFA500, #FF8C00)';
+        } else {
+            balanceEl.style.background = 'linear-gradient(45deg, #00b09b, #96c93d)';
+        }
     }
 
     sendToTelegram(event, amount) {
@@ -416,11 +632,12 @@ class GameState {
             const data = {
                 event: 'game_result',
                 user_id: this.userId,
-                bet: this.currentBetPerLine * this.activeLines,
+                bet: this.currentBet,
                 win: event === 'win' ? amount : 0,
                 result: event,
                 balance: this.balance,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                platform: this.isMobile ? 'mobile' : 'desktop'
             };
             
             tg.sendData(JSON.stringify(data));
@@ -433,14 +650,15 @@ class GameState {
             gamesPlayed: this.gamesPlayed,
             winsCount: this.winsCount,
             biggestWin: this.biggestWin,
+            currentBet: this.currentBet,
             lastPlayed: new Date().toISOString()
         };
         
-        localStorage.setItem(`casino_5x_${this.userId}`, JSON.stringify(data));
+        localStorage.setItem(`casino_5x5_${this.userId}`, JSON.stringify(data));
     }
 
     loadFromStorage() {
-        const data = localStorage.getItem(`casino_5x_${this.userId}`);
+        const data = localStorage.getItem(`casino_5x5_${this.userId}`);
         if (data) {
             try {
                 const saved = JSON.parse(data);
@@ -448,6 +666,7 @@ class GameState {
                 this.gamesPlayed = saved.gamesPlayed || this.gamesPlayed;
                 this.winsCount = saved.winsCount || this.winsCount;
                 this.biggestWin = saved.biggestWin || this.biggestWin;
+                this.currentBet = saved.currentBet || this.currentBet;
                 this.updateDisplay();
             } catch (e) {
                 console.error('Error loading from storage:', e);
@@ -458,18 +677,34 @@ class GameState {
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
-
-    fetchUserData() {
-        console.log('Fetching user data for ID:', this.userId);
-    }
 }
 
-// Инициализация игры
+// Инициализация при загрузке
 let game;
 
 document.addEventListener('DOMContentLoaded', () => {
     game = new GameState();
+    
+    // Добавляем поддержку PWA
+    if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        navigator.serviceWorker.register('/sw.js').catch(console.error);
+    }
 });
 
-// Экспортируем для отладки
-window.Game = GameState;
+// Обработка изменения ориентации
+window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+        location.reload();
+    }, 100);
+});
+
+// Предотвращаем зум на мобильных
+document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+document.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+});

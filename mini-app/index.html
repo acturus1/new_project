@@ -2,8 +2,8 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎰 Casino Slots 5x</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🎰 Slots 5×5</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -11,46 +11,38 @@
     <div class="container">
         <!-- Шапка -->
         <div class="header">
-            <h1><i class="fas fa-coins"></i> CASINO SLOTS 5x</h1>
-            <div class="balance-container">
-                <div class="balance" id="balance">1000 ₽</div>
-                <button class="refresh-btn" id="refreshBalance">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
+            <div class="header-content">
+                <h1><i class="fas fa-coins"></i> SLOTS 5×5</h1>
+                <div class="balance-container">
+                    <div class="balance" id="balance">1000 ₽</div>
+                </div>
             </div>
         </div>
 
-        <!-- Игровой автомат 5x3 -->
+        <!-- Игровой автомат 5×5 -->
         <div class="slot-machine">
-            <!-- 5 барабанов по 3 символа -->
+            <!-- Сетка 5×5 -->
             <div class="reels-container">
                 <div class="reels-grid" id="reelsGrid">
-                    <!-- Сетка 3x5 будет заполнена через JS -->
+                    <!-- 25 ячеек заполнятся через JS -->
                 </div>
-                <div class="reel-overlay"></div>
-            </div>
-
-            <!-- Линии выигрыша -->
-            <div class="paylines">
-                <div class="payline-title">ЛИНИИ ВЫИГРЫША (20 линий)</div>
-                <div class="paylines-grid" id="paylinesGrid">
-                    <!-- Линии будут отображены через JS -->
-                </div>
+                <div class="grid-overlay"></div>
             </div>
 
             <!-- Управление ставками -->
             <div class="bet-controls">
-                <div class="bet-title">СТАВКА НА ЛИНИЮ:</div>
-                <div class="bet-buttons">
-                    <button class="bet-btn" data-bet="1">1 ₽</button>
-                    <button class="bet-btn" data-bet="5">5 ₽</button>
-                    <button class="bet-btn active" data-bet="10">10 ₽</button>
-                    <button class="bet-btn" data-bet="25">25 ₽</button>
-                    <button class="bet-btn" data-bet="50">50 ₽</button>
+                <div class="bet-title">СТАВКА:</div>
+                <div class="bet-buttons" id="betButtons">
+                    <button class="bet-btn" data-bet="10">10 ₽</button>
+                    <button class="bet-btn active" data-bet="50">50 ₽</button>
+                    <button class="bet-btn" data-bet="100">100 ₽</button>
+                    <button class="bet-btn" data-bet="250">250 ₽</button>
+                    <button class="bet-btn" data-bet="500">500 ₽</button>
                 </div>
-                <div class="total-bet">
-                    <span>Общая ставка:</span>
-                    <span class="total-bet-amount" id="totalBet">200 ₽</span>
+                <div class="mobile-bet-controls">
+                    <button class="mobile-bet-btn" id="betMinus">−</button>
+                    <div class="current-bet" id="currentBet">50 ₽</div>
+                    <button class="mobile-bet-btn" id="betPlus">+</button>
                 </div>
             </div>
 
@@ -64,74 +56,87 @@
                 <div class="result" id="result">
                     Выберите ставку и нажмите "КРУТИТЬ!"
                 </div>
-                <div class="win-info">
-                    <div class="win-amount" id="winAmount"></div>
-                    <div class="win-lines" id="winLines"></div>
-                </div>
+                <div class="win-amount" id="winAmount"></div>
+                <div class="win-info" id="winInfo"></div>
             </div>
         </div>
 
-        <!-- Статистика -->
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-label">Активных линий</div>
-                <div class="stat-value" id="activeLines">20</div>
+        <!-- Быстрые ставки для мобильных -->
+        <div class="quick-bets">
+            <button class="quick-bet" data-bet="10">10₽</button>
+            <button class="quick-bet" data-bet="50">50₽</button>
+            <button class="quick-bet" data-bet="100">100₽</button>
+            <button class="quick-bet" data-bet="250">250₽</button>
+            <button class="quick-bet" data-bet="500">MAX</button>
+        </div>
+
+        <!-- Правила -->
+        <div class="rules">
+            <div class="rules-header" id="rulesToggle">
+                <h3><i class="fas fa-info-circle"></i> ПРАВИЛА</h3>
+                <i class="fas fa-chevron-down"></i>
             </div>
-            <div class="stat-item">
-                <div class="stat-label">Выигрышных линий</div>
-                <div class="stat-value" id="winningLines">0</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-label">Общий множитель</div>
-                <div class="stat-value" id="totalMultiplier">0x</div>
+            <div class="rules-content" id="rulesContent">
+                <ul>
+                    <li><span class="rule-emoji">🎯</span> 5+ одинаковых = ×200 (ДЖЕКПОТ)</li>
+                    <li><span class="rule-emoji">💰</span> 5 одинаковых = ×100</li>
+                    <li><span class="rule-emoji">💎</span> 4 одинаковых = ×20</li>
+                    <li><span class="rule-emoji">✨</span> 3 одинаковых = ×5</li>
+                    <li><span class="rule-emoji">⭐</span> Диагонали ×2</li>
+                    <li><span class="rule-emoji">7️⃣</span> Семерка ×3</li>
+                </ul>
             </div>
         </div>
 
-        <!-- Информация о символах -->
-        <div class="symbols-info">
-            <h3><i class="fas fa-star"></i> СИМВОЛЫ И МНОЖИТЕЛИ</h3>
-            <div class="symbols-grid">
-                <div class="symbol-card">
-                    <div class="symbol-emoji">🍒</div>
-                    <div class="symbol-multiplier">3x-5x-10x</div>
+        <!-- Мобильный footer -->
+        <div class="mobile-footer">
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-label">Игр</div>
+                    <div class="stat-value" id="gamesCount">0</div>
                 </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">🍋</div>
-                    <div class="symbol-multiplier">3x-5x-8x</div>
+                <div class="stat">
+                    <div class="stat-label">Побед</div>
+                    <div class="stat-value" id="winsCount">0</div>
                 </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">🍊</div>
-                    <div class="symbol-multiplier">3x-5x-8x</div>
-                </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">🍇</div>
-                    <div class="symbol-multiplier">5x-8x-12x</div>
-                </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">🔔</div>
-                    <div class="symbol-multiplier">8x-12x-20x</div>
-                </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">⭐</div>
-                    <div class="symbol-multiplier">10x-20x-50x</div>
-                </div>
-                <div class="symbol-card">
-                    <div class="symbol-emoji">7️⃣</div>
-                    <div class="symbol-multiplier">20x-50x-100x</div>
-                </div>
-                <div class="symbol-card wild">
-                    <div class="symbol-emoji">🃏</div>
-                    <div class="symbol-multiplier">WILD</div>
+                <div class="stat">
+                    <div class="stat-label">Рекорд</div>
+                    <div class="stat-value" id="biggestWin">0 ₽</div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Информация -->
-        <div class="info">
-            <p><i class="fas fa-info-circle"></i> 5 барабанов × 20 линий выигрыша</p>
-            <p><i class="fas fa-info-circle"></i> WILD (🃏) заменяет любой символ</p>
-            <p><i class="fas fa-info-circle"></i> Выигрыш = ставка на линию × множитель символа</p>
-            <p><i class="fas fa-info-circle"></i> Общая ставка = ставка на линию × 20 линий</p>
+    <!-- Мобильное меню -->
+    <div class="mobile-menu">
+        <button class="menu-btn" id="menuBtn">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+
+    <!-- Мобильная клавиатура ставок -->
+    <div class="mobile-keyboard" id="mobileKeyboard">
+        <div class="keyboard-header">
+            <span>Введите ставку</span>
+            <button class="keyboard-close" id="keyboardClose">×</button>
+        </div>
+        <div class="keyboard-display">
+            <input type="number" id="customBet" min="10" max="500" value="50">
+            <span>₽</span>
+        </div>
+        <div class="keyboard-keys">
+            <button class="key" data-key="1">1</button>
+            <button class="key" data-key="2">2</button>
+            <button class="key" data-key="3">3</button>
+            <button class="key" data-key="4">4</button>
+            <button class="key" data-key="5">5</button>
+            <button class="key" data-key="6">6</button>
+            <button class="key" data-key="7">7</button>
+            <button class="key" data-key="8">8</button>
+            <button class="key" data-key="9">9</button>
+            <button class="key" data-key="0">0</button>
+            <button class="key clear" id="keyClear">C</button>
+            <button class="key submit" id="keySubmit">OK</button>
         </div>
     </div>
 
